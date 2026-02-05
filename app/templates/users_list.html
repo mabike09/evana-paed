@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}Users{% endblock %}
+{% block content %}
+<div class="d-flex align-items-center mb-3">
+  <h1 class="h4 mb-0">Users</h1>
+  <a class="btn btn-sm btn-success ms-3" href="{{ url_for('auth.users_new') }}">New User</a>
+</div>
+<table class="table table-sm">
+  <thead><tr><th>ID</th><th>Username</th><th>Email</th><th>Role</th></tr></thead>
+  <tbody>
+    {% for u in users %}
+      <tr><td>{{ u.id }}</td><td>{{ u.username }}</td><td>{{ u.email }}</td><td>{{ u.role }}</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

@@ -1,0 +1,133 @@
+{% extends "base.html" %}
+{% block title %}Inventory{% endblock %}
+{% block content %}
+
+<div class="d-flex align-items-center justify-content-between mb-2">
+  <div class="d-flex align-items-center">
+    <h1 class="h5 mb-0">Inventory</h1>
+    {% if current_user.role in ['admin'] %}
+      <a class="btn btn-sm btn-success ms-2" href="{{ url_for('inventory.items_new') }}">New Item</a>
+    {% endif %}
+    {% if current_user.role in ['admin','nurse'] %}
+      <a class="btn btn-sm btn-outline-primary ms-2" href="{{ url_for('inventory.inventory_txn') }}">Record Txn</a>
+    {% endif %}
+  </div>
+
+  <form class="d-flex" method="get" action="{{ url_for('inventory.inventory_stock') }}">
+    <input type="hidden" name="mode" value="{{ mode }}">
+    {% if mode in ['pricebook','merged'] %}
+      <select name="payer" class="form-select form-select-sm me-2" onchange="this.form.submit()">
+        {% set current = payer_name or 'Cash' %}
+        <option value="Cash" {{ 'selected' if current == 'Cash' else '' }}>Cash</option>
+        {% for (b, payer) in books %}
+          {% if payer != 'Cash' %}
+          <option value="{{ payer }}" {{ 'selected' if payer == current else '' }}>{{ payer }}</option>
+          {% endif %}
+        {% endfor %}
+      </select>
+      {% if book %}
+        <input type="hidden" name="book_id" value="{{ book.id }}">
+      {% endif %}
+    {% endif %}
+    <input class="form-control form-control-sm me-2" type="search" name="q" value="{{ q or '' }}" placeholder="Search">
+    <button class="btn btn-sm btn-outline-secondary">Search</button>
+  </form>
+</div>
+
+<div class="mb-2">
+  <a class="btn btn-sm {{ 'btn-primary' if mode=='inventory' else 'btn-outline-primary' }}"
+     href="{{ url_for('inventory.inventory_stock', mode='inventory') }}">Inventory</a>
+
+  <a class="btn btn-sm {{ 'btn-primary' if mode=='pricebook' else 'btn-outline-primary' }}"
+     href="{{ url_for('inventory.inventory_stock', mode='pricebook', payer=payer_name or 'Cash') }}">Price Book</a>
+
+  <a class="btn btn-sm {{ 'btn-primary' if mode=='merged' else 'btn-outline-primary' }}"
+     href="{{ url_for('inventory.inventory_stock', mode='merged', payer=payer_name or 'Cash') }}">Merged</a>
+</div>
+
+{% if mode == 'inventory' %}
+  <div class="table-responsive">
+    <table class="table table-sm align-middle">
+      <thead><tr>
+        <th>Name</th><th>SKU</th><th>Unit</th>
+        <th class="text-end">Price</th><th class="text-end">Min</th><th class="text-end">Qty</th><th></th>
+      </tr></thead>
+      <tbody>
+        {% for it in items %}
+          <tr class="{% if (it.min_level or 0) >= (it.current_qty or 0) %}table-warning{% endif %}">
+            <td>
+              {{ it.name }}
+              {% if it.is_drug %}<span class="badge bg-info ms-1">Drug</span>{% endif %}
+            </td>
+            <td>{{ it.sku or '' }}</td>
+            <td>{{ it.unit or '' }}</td>
+            <td class="text-end">{{ 'UGX %.0f' % it.sell_price if it.sell_price is not none else '' }}</td>
+            <td class="text-end">{{ it.min_level or 0 }}</td>
+            <td class="text-end">{{ it.current_qty or 0 }}</td>
+            <td>
+              {% if current_user.role == 'admin' %}
+                <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('inventory.items_edit', item_id=it.id) }}">Edit</a>
+              {% endif %}
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <p class="text-muted">Low/critical items: {{ low_count }}</p>
+
+{% elif mode == 'pricebook' %}
+  <div class="small text-muted mb-2">
+    {% if book %} Viewing price book: <strong>{{ book.name }}</strong> ({{ payer_name }}) {% else %} No price book selected. {% endif %}
+  </div>
+  <div class="table-responsive">
+    <table class="table table-sm table-striped">
+      <thead><tr>
+        <th>Type</th><th>Code</th><th>Name</th><th>Unit</th>
+        <th class="text-end">Sell</th><th class="text-end">Buy</th>
+      </tr></thead>
+      <tbody>
+        {% for pi in rows_price %}
+        <tr>
+          <td>{{ pi.item_type }}</td>
+          <td>{{ pi.item_code or '' }}</td>
+          <td>{{ pi.item_name }}</td>
+          <td>{{ pi.unit or '' }}</td>
+          <td class="text-end">{{ '%.0f' % pi.sell_price if pi.sell_price is not none else '' }}</td>
+          <td class="text-end">{{ '%.0f' % pi.buy_price if pi.buy_price is not none else '' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+{% elif mode == 'merged' %}
+  <div class="small text-muted mb-2">
+    {% if book %} Merged with price book: <strong>{{ book.name }}</strong> ({{ payer_name }}). Inventory price shows when book price is missing. {% endif %}
+  </div>
+  <div class="table-responsive">
+    <table class="table table-sm table-striped">
+      <thead><tr>
+        <th>Name</th><th>SKU</th><th>Unit</th><th class="text-end">Qty</th>
+        <th>Type</th>
+        <th class="text-end">Price (Book)</th>
+        <th class="text-end">Price (Inv)</th>
+      </tr></thead>
+      <tbody>
+        {% for r in rows_merged %}
+        <tr>
+          <td>{{ r.item_name }}</td>
+          <td>{{ r.item_sku or '' }}</td>
+          <td>{{ r.item_unit or '' }}</td>
+          <td class="text-end">{{ r.qty or 0 }}</td>
+          <td>{{ r.pb_type or '' }}</td>
+          <td class="text-end">{% if r.pb_sell is not none %}{{ '%.0f' % r.pb_sell }}{% endif %}</td>
+          <td class="text-end">{% if r.inv_sell is not none %}{{ '%.0f' % r.inv_sell }}{% endif %}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% endif %}
+
+{% endblock %}

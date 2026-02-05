@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Payer Split Report</h2>
+<table class="table table-sm table-striped">
+  <tr><th>Payer</th><th>Billed</th><th>Paid</th><th>Balance</th></tr>
+  {% for payer, sums in totals.items() %}
+  <tr>
+    <td>{{ payer }}</td>
+    <td>{{ sums.billed }}</td>
+    <td>{{ sums.paid }}</td>
+    <td>{{ sums.billed - sums.paid }}</td>
+  </tr>
+  {% endfor %}
+</table>
+{% endblock %}

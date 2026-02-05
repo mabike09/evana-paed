@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="d-flex align-items-center justify-content-between mb-3">
+  <h3 class="mb-0">Edit Visit</h3>
+  <a class="btn btn-outline-secondary" href="{{ url_for('patients.patient_chart', patient_id=p.id) }}">Back to Chart</a>
+</div>
+
+{% if not editable %}
+<div class="alert alert-warning mb-3">
+  This visit can no longer be edited (over 24 hours old).
+</div>
+{% endif %}
+
+<form method="POST" novalidate>
+  {{ form.hidden_tag() }}
+
+  <div class="row g-3">
+    <div class="col-sm-4">
+      <label class="form-label">{{ form.visit_date.label }}</label>
+      {{ form.visit_date(class="form-control", disabled=not editable) }}
+      {% for e in form.visit_date.errors %}<div class="text-danger small">{{ e }}</div>{% endfor %}
+    </div>
+
+    <div class="col-sm-8">
+      <label class="form-label">{{ form.reason.label }}</label>
+      {{ form.reason(class="form-control", placeholder="Chief complaint", disabled=not editable) }}
+      {% for e in form.reason.errors %}<div class="text-danger small">{{ e }}</div>{% endfor %}
+    </div>
+
+    <div class="col-12">
+      <label class="form-label">{{ form.notes.label }}</label>
+      {{ form.notes(class="form-control", rows="4", placeholder="Clinical notes", disabled=not editable) }}
+      {% for e in form.notes.errors %}<div class="text-danger small">{{ e }}</div>{% endfor %}
+    </div>
+
+    <div class="col-12">
+      <label class="form-label">{{ form.diagnosis.label }}</label>
+      {{ form.diagnosis(class="form-control", rows="3", placeholder="Diagnosis", disabled=not editable) }}
+      {% for e in form.diagnosis.errors %}<div class="text-danger small">{{ e }}</div>{% endfor %}
+    </div>
+
+    <div class="col-md-6">
+      <label class="form-label">Procedures (summary)</label>
+      <!-- If your form has a 'procedures' TextAreaField, render it; else show readonly text -->
+      {% if form.procedures is defined %}
+        {{ form.procedures(class="form-control", rows="3", placeholder="e.g. Extraction 38; Scaling", disabled=not editable) }}
+        {% for e in form.procedures.errors %}<div class="text-danger small">{{ e }}</div>{% endfor %}
+      {% else %}
+        <textarea class="form-control" rows="3" disabled>{{ v.procedures or "" }}</textarea>
+      {% endif %}
+    </div>
+
+    <div class="col-md-6">
+      <label class="form-label">Prescriptions (summary)</label>
+      {% if form.prescriptions is defined %}
+        {{ form.prescriptions(class="form-control", rows="3", placeholder="e.g. Amoxicillin 500mg TID x5 days", disabled=not editable) }}
+        {% for e in form.prescriptions.errors %}<div class="text-danger small">{{ e }}</div>{% endfor %}
+      {% else %}
+        <textarea class="form-control" rows="3" disabled>{{ v.prescriptions or "" }}</textarea>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="mt-3 d-flex gap-2">
+    <button class="btn btn-primary" type="submit" {% if not editable %}disabled{% endif %}>Save changes</button>
+    <a class="btn btn-outline-secondary" href="{{ url_for('patients.patient_chart', patient_id=p.id) }}">Cancel</a>
+  </div>
+
+  <div class="text-muted small mt-2">
+    Visit created: {{ v.created_at.strftime('%Y-%m-%d %H:%M') if v.created_at else '—' }}
+  </div>
+</form>
+{% endblock %}

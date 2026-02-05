@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Receipt {{ payment.receipt_no or payment.id }}</title>
+  <style>
+    @page { size: A4; margin: 16mm 14mm; }
+    body { font: 12px/1.4 "DejaVu Sans", Arial, sans-serif; color:#000; }
+    .center { text-align:center; }
+    .right { text-align:right; }
+    .bold { font-weight: 700; }
+    .tiny { font-size: 11px; }
+    .line { border-top:1px solid #000; margin:10px 0; }
+    table { width:100%; border-collapse:collapse; }
+    th, td { padding:6px 8px; border-bottom:1px solid #ddd; vertical-align:top; }
+    th { text-align:left; background:#f5f5f5; }
+    .totals td { border:0; }
+  </style>
+</head>
+<body>
+
+  {# --- Embedded branch-aware header (no includes) --- #}
+  {% set branch_code = (branch.code if branch and branch.code else (g.branch_code or session.get('branch_code') or 'KNY')) | upper %}
+  {% set BRMAP = {
+    'KNY': {'label': 'BAMBI DENTAL CLINIC - KANYANYA',     'addr': 'Plot 853, Gayaza – Kampala road, Kanyanya'},
+    'KYL': {'label': 'BAMBI DENTAL CLINIC - KYALIWAJJALA', 'addr': 'Naalya-Namugongo road, Kyaliwajjala'},
+    'WAK': {'label': 'BAMBI DENTAL CLINIC - WAKISO',       'addr': 'Plot 854, Hoima Rd, Wakiso Town'}
+  } %}
+  {% set BR = BRMAP.get(branch_code, BRMAP['KNY']) %}
+  <table style="width:100%; border-collapse:collapse;">
+    <tr>
+      <td style="width:68px; vertical-align:middle;">
+        <img src="{{ url_for('static', filename='img/bambi_logo.png') }}"
+             alt="Bambi Dental Clinic" style="height:52px;">
+      </td>
+      <td style="vertical-align:middle;">
+        <div style="font-weight:900; font-size:18px; line-height:1.1;">
+          {{ BR.label }}
+        </div>
+        <div style="font-size:12px; margin-top:2px;">
+          {{ BR.addr }}<br>
+          Tel: 0757027107 &nbsp;•&nbsp; Email: bambiclinic@gmail.com
+        </div>
+      </td>
+    </tr>
+  </table>
+  <hr style="border:none; border-top:1px solid #000; margin:8px 0;">
+
+  <table>
+    <tr>
+      <td class="tiny"><span class="bold">RECEIPT</span></td>
+      <td class="right tiny">Date: {{ payment.payment_date }}</td>
+    </tr>
+    <tr>
+      <td class="tiny">Receipt No: <span class="bold">{{ payment.receipt_no or payment.id }}</span></td>
+      <td class="right tiny">Invoice: {{ invoice.number or invoice.id }}</td>
+    </tr>
+    <tr>
+      <td class="tiny">Patient: {{ patient.first_name }} {{ patient.last_name }}</td>
+      <td class="right tiny">Patient No: {{ patient.patient_code or '-' }}</td>
+    </tr>
+  </table>
+
+  <div class="line"></div>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Description</th>
+        <th class="right">Qty</th>
+        <th class="right">Unit</th>
+        <th class="right">Line Total</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for line in (invoice.lines or []) %}
+      <tr>
+        <td>{{ line.description }}</td>
+        <td class="right">{{ '{:,.2f}'.format(line.qty or 0) }}</td>
+        <td class="right">{{ '{:,.0f}'.format(line.unit_price or 0) }}</td>
+        <td class="right">{{ '{:,.0f}'.format(line.line_total or 0) }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <table style="margin-top:10px;" class="totals">
+    <tr>
+      <td class="left" style="width:60%"></td>
+      <td class="right tiny" style="width:20%"><span class="bold">Subtotal</span></td>
+      <td class="right tiny" style="width:20%">{{ '{:,.0f}'.format(invoice.amount or 0) }}</td>
+    </tr>
+    <tr>
+      <td></td>
+      <td class="right tiny">Paid This Receipt</td>
+      <td class="right tiny">{{ '{:,.0f}'.format(payment.amount or 0) }}</td>
+    </tr>
+    <tr>
+      <td></td>
+      <td class="right tiny">Total Paid To Date</td>
+      <td class="right tiny">{{ '{:,.0f}'.format(invoice.paid_total or 0) }}</td>
+    </tr>
+    <tr>
+      <td></td>
+      <td class="right tiny bold">Balance</td>
+      <td class="right tiny bold">{{ '{:,.0f}'.format(invoice.balance or 0) }}</td>
+    </tr>
+  </table>
+
+  <p class="center tiny" style="margin-top:14px;">Thank you for your visit!</p>
+
+</body>
+</html>

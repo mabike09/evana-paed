@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h4 class="mb-0">Upload Insurance Pricelist</h4>
+  <a class="btn btn-outline-secondary" href="{{ url_for('billing_prices') }}">Back to Prices</a>
+</div>
+
+<div class="alert alert-info">
+  <div><strong>Format:</strong> CSV recommended. Required columns: <code>procedure_code</code> (or <code>code</code>), <code>price</code>.</div>
+  <div>You can <a href="{{ url_for('pricelists_template_csv') }}">download a CSV template</a> with all procedure codes.</div>
+</div>
+
+<form method="POST" enctype="multipart/form-data">
+  {{ form.hidden_tag() }}
+
+  <div class="row g-3">
+    <div class="col-md-4">
+      <label class="form-label">{{ form.insurer_id.label }}</label>
+      {{ form.insurer_id(class="form-select") }}
+    </div>
+    <div class="col-md-8">
+      <label class="form-label">{{ form.file.label }}</label>
+      {{ form.file(class="form-control") }}
+      <div class="form-text">Accepts .csv (preferred) or .xlsx (requires server support).</div>
+    </div>
+    <div class="col-12">
+      <div class="form-check">
+        {{ form.clear_before(class="form-check-input", id="clear_before") }}
+        <label class="form-check-label" for="clear_before">
+          Clear existing prices for this insurer before import (use with caution).
+        </label>
+      </div>
+    </div>
+  </div>
+
+  <div class="mt-3 d-flex gap-2">
+    {{ form.submit(class="btn btn-primary") }}
+    <a class="btn btn-outline-secondary" href="{{ url_for('billing_prices') }}">Cancel</a>
+  </div>
+</form>
+{% endblock %}

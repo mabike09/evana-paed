@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block content %}
+<h4 class="mb-3">Ledger — {{ item.name }}</h4>
+<div class="mb-2 text-muted">Current qty: {{ item.current_qty or 0 }} • Min level: {{ item.min_level or 0 }}</div>
+
+<div class="table-responsive">
+  <table class="table table-sm table-striped align-middle">
+    <thead class="table-light">
+      <tr>
+        <th>When</th><th>Change</th><th>Reason</th><th>Visit</th><th>User</th><th>Note</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for t in txns %}
+      <tr>
+        <td>{{ t.when.strftime("%Y-%m-%d %H:%M") if t.when else "-" }}</td>
+        <td>{{ t.qty_change }}</td>
+        <td>{{ t.reason }}</td>
+        <td>{{ t.visit_id or "-" }}</td>
+        <td>{{ t.user_id or "-" }}</td>
+        <td>{{ t.note or "-" }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+<a class="btn btn-outline-secondary" href="{{ url_for('inventory.inventory_stock') }}">Back</a>
+{% endblock %}

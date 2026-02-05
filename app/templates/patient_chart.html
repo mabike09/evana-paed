@@ -1,0 +1,543 @@
+{% extends "base.html" %}
+{% block title %}Patient Chart — {{ p.first_name }} {{ p.last_name }}{% endblock %}
+{% block content %}
+
+<div class="d-flex align-items-center mb-3">
+  <h1 class="h4 mb-0 me-3">
+    {{ p.first_name }} {{ p.last_name }}
+    <small class="text-muted">(#{{ p.patient_code }})</small>
+  </h1>
+
+  <div class="ms-auto">
+    <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('patients.doctors_queue') }}">Back to Doctor’s Queue</a>
+  </div>
+        </div>
+        
+        {% if v %}
+          <!-- Triage Vitals (read-only) -->
+          <div class="card mb-3">
+            <div class="card-header fw-semibold">Triage Vitals (selected visit)</div>
+            <div class="card-body row g-3">
+              <div class="col-6 col-md-3"><div class="text-muted small">Weight</div><div>{{ v.weight_kg or '—' }} kg</div></div>
+              <div class="col-6 col-md-3"><div class="text-muted small">Height</div><div>{{ v.height_cm or '—' }} cm</div></div>
+              <div class="col-6 col-md-3"><div class="text-muted small">Temp</div><div>{{ v.temp_c or '—' }} °C</div></div>
+              <div class="col-6 col-md-3"><div class="text-muted small">Pulse</div><div>{{ v.pulse_bpm or '—' }} bpm</div></div>
+              <div class="col-6 col-md-3"><div class="text-muted small">BP</div><div>
+                {% if v.bp_sys and v.bp_dia %}{{ v.bp_sys }}/{{ v.bp_dia }}{% else %}—{% endif %}
+              </div></div>
+              <div class="col-6 col-md-3"><div class="text-muted small">SpO₂</div><div>{{ v.spo2 or '—' }} %</div></div>
+            </div>
+          </div>
+        {% endif %}
+        
+        <div class="row g-3">
+          <div class="col-lg-8">
+        
+            {% if v %}
+            <!-- Clinical Sections -->
+            <form class="card mb-3" method="post" action="{{ url_for('patients.visit_update_clinical', visit_id=v.id) }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <div class="card-header fw-semibold">Clinical Notes</div>
+            
+              <div class="card-body">
+                {% set notes = v.notes or '' %}
+                {% set presenting_txt = '' %}
+                {% set hopc_txt = '' %}
+                {% set exam_txt = '' %}
+                {% set plan_txt = '' %}
+            
+                {% if '[Presenting]' in notes %}
+                  {% set presenting_txt = notes.split('[Presenting]', 1)[1] %}
+                  {% if '[HOPC]' in presenting_txt %}
+                    {% set presenting_txt = presenting_txt.split('[HOPC]', 1)[0] | trim %}
+                  {% else %}
+                    {% set presenting_txt = presenting_txt | trim %}
+                  {% endif %}
+                {% endif %}
+            
+                {% if '[HOPC]' in notes %}
+                  {% set hopc_txt = notes.split('[HOPC]', 1)[1] %}
+                  {% if '[Exam]' in hopc_txt %}
+                    {% set hopc_txt = hopc_txt.split('[Exam]', 1)[0] | trim %}
+                  {% else %}
+                    {% set hopc_txt = hopc_txt | trim %}
+                  {% endif %}
+                {% endif %}
+            
+                {% if '[Exam]' in notes %}
+                  {% set exam_txt = notes.split('[Exam]', 1)[1] %}
+                  {% if '[Plan]' in exam_txt %}
+                    {% set exam_txt = exam_txt.split('[Plan]', 1)[0] | trim %}
+                  {% else %}
+                    {% set exam_txt = exam_txt | trim %}
+                  {% endif %}
+                {% endif %}
+            
+                {% if '[Plan]' in notes %}
+                  {% set plan_txt = notes.split('[Plan]', 1)[1] | trim %}
+                {% endif %}
+            
+                <div class="mb-3">
+                  <label class="form-label">Presenting Complaints</label>
+                  <textarea name="presenting" rows="2" class="form-control">{{ presenting_txt }}</textarea>
+                </div>
+            
+                <div class="mb-3">
+                  <label class="form-label">History of Presenting Complaints</label>
+                  <textarea name="hopc" rows="3" class="form-control">{{ hopc_txt }}</textarea>
+                </div>
+            
+                <div class="mb-3">
+                  <label class="form-label">Examination Findings</label>
+                  <textarea name="exam" rows="3" class="form-control">{{ exam_txt }}</textarea>
+                </div>
+            
+                <div class="mb-3">
+                  <label class="form-label">Diagnosis</label>
+                  <input type="text" name="diagnosis" class="form-control" value="{{ v.diagnosis or '' }}">
+                </div>
+            
+                <div class="mb-0">
+                  <label class="form-label">Treatment Plan</label>
+                  <textarea name="plan" rows="2" class="form-control">{{ plan_txt }}</textarea>
+                </div>
+              </div>
+            
+              <div class="card-footer text-end">
+                <button class="btn btn-primary">Save Clinical Notes</button>
+              </div>
+            </form>
+
+
+    {# ------------------------------- #}
+    {# Autocomplete URLs (subpath-safe) #}
+    {# ------------------------------- #}
+    <script>
+      const DRUG_LOOKUP_URL = "{{ url_for('patients.api_lookup_drugs') }}";
+      const PROC_LOOKUP_URL = "{{ url_for('patients.api_lookup_procedures') }}";
+    </script>
+
+    <script>
+      (function(){
+        const closeForm = document.getElementById('close-visit-form');
+        if(!closeForm) return;
+
+        closeForm.addEventListener('submit', function(){
+          // Remove previously added hidden fields to avoid duplicates
+          closeForm.querySelectorAll('.rx-hidden').forEach(el => el.remove());
+
+          document.querySelectorAll('#drug-rows .drug-row').forEach(row => {
+            const name = (row.querySelector('.drug-name')?.value || '').trim();
+            const id   = (row.querySelector('.drug-id')?.value || '').trim();
+            const dose = (row.querySelector('input[name="dose[]"]')?.value || '').trim();
+            const qty  = (row.querySelector('input[name="qty[]"]')?.value || '1').trim();
+
+            // only add non-empty rows
+            if(!name && !id) return;
+
+            const addHidden = (n, v) => {
+              const input = document.createElement('input');
+              input.type = 'hidden';
+              input.name = n;
+              input.value = v;
+              input.classList.add('rx-hidden');
+              closeForm.appendChild(input);
+            };
+
+            addHidden('drug_id[]', id);
+            addHidden('drug_name[]', name);
+            addHidden('dose[]', dose);
+            addHidden('qty[]', qty);
+          });
+        });
+      })();
+    </script>
+
+    <!-- Prescriptions -->
+    <div class="card mb-3">
+      <div class="card-header fw-semibold">Drug Prescription</div>
+      <div class="card-body">
+        <form method="post" action="{{ url_for('patients.visit_add_drugs_bulk', visit_id=v.id) }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+          <div id="drug-rows">
+            <datalist id="drug-suggestions"></datalist>
+
+            <div class="row g-2 mb-2 drug-row">
+              <div class="col-md-4">
+                <input class="form-control drug-name"
+                       name="drug_name[]"
+                       placeholder="Start typing drug name..."
+                       list="drug-suggestions"
+                       autocomplete="off">
+                <input type="hidden" class="drug-id" name="drug_id[]" value="">
+              </div>
+              <div class="col-md-3">
+                <input class="form-control" name="dose[]" placeholder="Dose e.g. 500mg bd">
+              </div>
+              <div class="col-md-2">
+                <input class="form-control" name="qty[]" type="number" min="1" value="1">
+              </div>
+              <div class="col-md-3 text-end">
+                <button type="button" class="btn btn-outline-secondary btn-sm add-row">Add</button>
+                <button type="button" class="btn btn-outline-danger btn-sm remove-row">Remove</button>
+              </div>
+            </div>
+          </div>
+
+          <button class="btn btn-primary btn-sm">Add all drugs</button>
+        </form>
+      </div>
+    </div>
+
+    <!-- Procedures -->
+    <div class="card mb-3">
+      <div class="card-header fw-semibold">Procedures</div>
+      <div class="card-body">
+        <form method="post" action="{{ url_for('patients.visit_add_procedure', visit_id=v.id) }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+          <div class="row g-2">
+            <div class="col-md-8">
+              <input class="form-control"
+                     id="procedure-name"
+                     name="procedure_name"
+                     placeholder="Start typing procedure..."
+                     list="procedure-suggestions"
+                     autocomplete="off"
+                     required>
+              <datalist id="procedure-suggestions"></datalist>
+              <input type="hidden" id="procedure-id" name="proc_id" value="">
+              <div class="form-text">Tip: start typing (min 2 letters) to search the Cash price book.</div>
+            </div>
+            <div class="col-md-4">
+              <button class="btn btn-outline-primary btn-sm w-100">Add procedure</button>
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <script>
+      // add/remove drug rows
+      document.addEventListener('click', function(e){
+        if(e.target.classList.contains('add-row')){
+          const row = e.target.closest('.drug-row');
+          const clone = row.cloneNode(true);
+          clone.querySelectorAll('input').forEach(i => i.value = '');
+          row.parentNode.appendChild(clone);
+        }
+        if(e.target.classList.contains('remove-row')){
+          const rows = document.querySelectorAll('#drug-rows .drug-row');
+          if(rows.length > 1) e.target.closest('.drug-row').remove();
+        }
+      });
+    </script>
+
+    <script>
+    (function(){
+      const drugList = document.getElementById('drug-suggestions');
+      const procList = document.getElementById('procedure-suggestions');
+      const procInput = document.getElementById('procedure-name');
+      const procIdInput = document.getElementById('procedure-id');
+
+      // cache by displayed name -> id/price
+      let drugCache = {}; // name -> {id, price}
+      let procCache = {}; // name -> {id, price}
+
+      function debounce(fn, wait){
+        let t;
+        return function(...args){
+          clearTimeout(t);
+          t = setTimeout(() => fn.apply(this, args), wait);
+        }
+      }
+
+      async function fetchJSON(url){
+        const resp = await fetch(url, {
+          method: 'GET',
+          credentials: 'same-origin', // IMPORTANT: send session cookie
+          headers: { 'Accept': 'application/json' }
+        });
+        if(!resp.ok) return [];
+        const ct = (resp.headers.get('content-type') || '').toLowerCase();
+        // if a redirect/login HTML sneaks in, return empty
+        if(!ct.includes('application/json')) return [];
+        return await resp.json();
+      }
+
+      const loadDrugSuggestions = debounce(async function(q){
+        if(!q || q.length < 2){
+          drugList.innerHTML = '';
+          drugCache = {};
+          return;
+        }
+        const data = await fetchJSON(`${DRUG_LOOKUP_URL}?q=${encodeURIComponent(q)}`);
+        drugList.innerHTML = '';
+        drugCache = {};
+        data.forEach(it => {
+          // expected from API: {id, name, price}
+          drugCache[it.name] = { id: it.id, price: it.price };
+          const opt = document.createElement('option');
+          opt.value = it.name;
+          drugList.appendChild(opt);
+        });
+      }, 200);
+
+      const loadProcSuggestions = debounce(async function(q){
+        if(!q || q.length < 2){
+          procList.innerHTML = '';
+          procCache = {};
+          if(procIdInput) procIdInput.value = '';
+          return;
+        }
+        const data = await fetchJSON(`${PROC_LOOKUP_URL}?q=${encodeURIComponent(q)}`);
+        procList.innerHTML = '';
+        procCache = {};
+        data.forEach(p => {
+          // expected from API: {id, name, price}
+          procCache[p.name] = { id: p.id, price: p.price };
+          const opt = document.createElement('option');
+          opt.value = p.name;
+          procList.appendChild(opt);
+        });
+      }, 200);
+
+      // watch input typing
+      document.addEventListener('input', function(e){
+        if(e.target.classList && e.target.classList.contains('drug-name')){
+          loadDrugSuggestions(e.target.value);
+
+          // If the typed value exactly matches a suggestion, immediately set the hidden item id.
+          // This avoids cases where users pick from the datalist but 'change' doesn't fire (browser-specific).
+          const row = e.target.closest('.drug-row');
+          const hid = row ? row.querySelector('.drug-id') : null;
+          const hit = drugCache[e.target.value];
+          if(hid) hid.value = hit ? hit.id : '';
+        }
+        if(e.target === procInput){
+          loadProcSuggestions(procInput.value);
+        }
+      });
+
+      // set hidden ids on selection/change
+      document.addEventListener('change', function(e){
+        if(e.target.classList && e.target.classList.contains('drug-name')){
+          const row = e.target.closest('.drug-row');
+          const hid = row ? row.querySelector('.drug-id') : null;
+          const hit = drugCache[e.target.value];
+          if(hid) hid.value = hit ? hit.id : '';
+        }
+        if(e.target === procInput){
+          const hit = procCache[procInput.value];
+          if(procIdInput) procIdInput.value = hit ? hit.id : '';
+        }
+      });
+
+      // Before procedure submit, ensure proc_id exists
+      if(procInput && procIdInput){
+        const form = procInput.closest('form');
+        if(form){
+          form.addEventListener('submit', function(ev){
+            const hit = procCache[procInput.value];
+            if(hit) procIdInput.value = hit.id;
+            if(!procIdInput.value){
+              ev.preventDefault();
+              alert('Please pick a procedure from suggestions (type at least 2 letters).');
+            }
+          });
+        }
+      }
+      // Before drug submit, ensure selected inventory id is captured for each non-empty row
+      const drugForm = document.querySelector('form[action*="/add_drugs"]');
+      if(drugForm){
+        drugForm.addEventListener('submit', function(ev){
+          let bad = false;
+          drugForm.querySelectorAll('#drug-rows .drug-row').forEach(row => {
+            const name = (row.querySelector('.drug-name')?.value || '').trim();
+            const hid  = row.querySelector('.drug-id');
+            const hit  = drugCache[name];
+            if(hid && hit && !hid.value) hid.value = hit.id;
+            // If name provided but no id, it's not linked to inventory
+            if(name && hid && !hid.value){
+              bad = true;
+            }
+          });
+          if(bad){
+            ev.preventDefault();
+            alert('Please pick drugs from the suggestions so they link to inventory stock.');
+          }
+        });
+      }
+
+    })();
+    </script>
+
+    <!-- Doctor: Send to Lab (keeps visit open) -->
+    <div class="card mb-3">
+      <div class="card-header fw-semibold">Lab</div>
+      <div class="card-body">
+        <form method="post" action="{{ url_for('patients.visit_send_to_lab', visit_id=v.id) }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <div class="row">
+            {% if lab_tests_options and lab_tests_options|length %}
+              {% for it in lab_tests_options %}
+                <div class="col-12 col-md-6 col-lg-4">
+                  <div class="form-check mb-1">
+                    <input class="form-check-input" type="checkbox" id="lab-{{ it.id }}"
+                           name="lab_tests" value="{{ it.id }}">
+                    <label class="form-check-label" for="lab-{{ it.id }}">
+                      {{ it.name }}{% if it.price and it.price > 0 %} — UGX {{ '%.0f'|format(it.price) }}{% endif %}
+                    </label>
+                  </div>
+                </div>
+              {% endfor %}
+            {% else %}
+              <div class="alert alert-warning">No lab tests found in the price book for this patient/payer.</div>
+            {% endif %}
+          </div>
+          <div class="mt-2">
+            <button class="btn btn-success btn-sm">Request selected tests (Pay first)</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Current Visit Invoice -->
+    <div class="card mb-3">
+      <div class="card-header fw-semibold">Current Visit Invoice</div>
+      <div class="card-body">
+        {% if visit_invoice %}
+          <div class="d-flex justify-content-between align-items-center">
+            <div>
+              <div class="fw-semibold">{{ visit_invoice.number or 'Invoice' }}</div>
+              <div class="small text-muted">{{ visit_invoice.issue_date }}</div>
+            </div>
+            <div class="ms-3">UGX {{ '%.0f'|format(visit_invoice.amount or 0) }}</div>
+          </div>
+
+          {% if visit_invoice.lines and visit_invoice.lines|length %}
+            <hr>
+            <div class="small text-muted mb-2">Line items (this visit)</div>
+            <ul class="list-group">
+              {% for l in visit_invoice.lines %}
+                <li class="list-group-item d-flex justify-content-between">
+                  <div>
+                    <div class="fw-semibold">{{ l.description or 'Item' }}</div>
+                    <div class="small text-muted">
+                      {% if l.kind %}{{ l.kind|upper }}{% endif %}
+                      {% if l.qty %} • Qty: {{ l.qty }}{% endif %}
+                      {% if l.unit_price is not none %} • UGX {{ '%.0f'|format(l.unit_price or 0) }}{% endif %}
+                    </div>
+                  </div>
+                  <div class="ms-3">UGX {{ '%.0f'|format(l.line_total or 0) }}</div>
+                </li>
+              {% endfor %}
+            </ul>
+          {% else %}
+            <div class="text-muted mt-2">No billed items yet for this visit.</div>
+          {% endif %}
+        {% else %}
+          <div class="text-muted">No invoice found for this visit yet.</div>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Close Visit -->
+    <form id="close-visit-form" class="card mb-4" method="post" action="{{ url_for('patients.visit_close_and_bill', visit_id=v.id) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="card-header fw-semibold">Finish</div>
+      <div class="card-body">
+        <p class="mb-2 text-muted">
+          <strong>Save & Close Visit</strong> will finalize the visit, recompute the invoice, and route the patient
+          <em>to Pharmacy if any drugs were prescribed</em>, otherwise <em>to Billing</em>.
+        </p>
+      </div>
+      <div class="card-footer text-end">
+        <button class="btn btn-primary">Save & Close Visit</button>
+      </div>
+    </form>
+
+    {% else %}
+      <div class="card mb-3">
+        <div class="card-body">
+          <div class="alert alert-warning mb-0">
+            No active visit. Create a visit before entering clinical notes or sending to Lab/Pharmacy.
+          </div>
+        </div>
+      </div>
+    {% endif %}
+
+    <!-- Results for this visit -->
+    <div class="card">
+      <div class="text-end">
+        <a class="btn btn-sm btn-outline-secondary"
+           href="{{ url_for('lab.patient_lab_history', patient_id=p.id) }}">View Lab History</a>
+      </div>
+      <div class="card-header fw-semibold">Results (This Visit)</div>
+      <div class="card-body">
+        {% if lab_results and lab_results|length > 0 %}
+          <div class="list-group">
+            {% for r in lab_results %}
+              <div class="list-group-item">
+                <div class="d-flex justify-content-between">
+                  <div>
+                    <div class="fw-semibold">{{ r.test_name or 'Result' }}</div>
+                    <div class="small text-muted">{{ r.created_at or '' }}</div>
+                  </div>
+                  <div class="ms-3">
+                    <span class="badge bg-light text-dark">{{ r.status or 'Ready' }}</span>
+                  </div>
+                </div>
+                {% if r.result_text %}
+                  <pre class="mt-2 mb-0">{{ r.result_text }}</pre>
+                {% elif r.value %}
+                  <div class="mt-2">Value: <strong>{{ r.value }}</strong> {{ r.units or '' }}</div>
+                {% endif %}
+              </div>
+            {% endfor %}
+          </div>
+        {% else %}
+          <p class="text-muted mb-0">No results yet for this visit.</p>
+        {% endif %}
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Right side: Visits & Billing -->
+  <div class="col-lg-4">
+    <div class="card mb-3">
+      <div class="card-header fw-semibold">Visits</div>
+      <div class="list-group list-group-flush">
+        {% for vv in visits %}
+          <a class="list-group-item list-group-item-action {% if v and v.id == vv.id %}active{% endif %}"
+             href="{{ url_for('patients.patient_chart', patient_id=p.id, visit_id=vv.id) }}">
+            {{ vv.visit_date }}{% if vv.status %} — {{ vv.status }}{% endif %}
+            {% if vv.diagnosis %}<div class="small">{{ vv.diagnosis }}</div>{% endif %}
+          </a>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header fw-semibold">Invoices (All)</div>
+      <div class="list-group list-group-flush">
+        {% for inv in invoices %}
+          <div class="list-group-item d-flex justify-content-between">
+            <div>
+              <div class="fw-semibold">{{ inv.number or 'Invoice' }}</div>
+              <div class="small text-muted">{{ inv.issue_date }}</div>
+            </div>
+            <div class="ms-3">UGX {{ '%.0f'|format(inv.amount or 0) }}</div>
+          </div>
+        {% endfor %}
+        {% if not invoices or invoices|length == 0 %}
+          <div class="list-group-item text-muted">No invoices yet.</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}

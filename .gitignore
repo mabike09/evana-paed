@@ -1,0 +1,48 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+dist/
+build/
+
+# Virtualenv / local env
+venv/
+.venv/
+.env
+*.env
+
+# Secrets & instance config
+config.py
+instance/
+*.pem
+*.key
+secrets*.json
+
+# Logs & temp
+logs/
+*.log
+stderr.log
+tmp/
+
+# Uploads (optional - keep out unless you want them versioned)
+uploads/
+
+# Databases (DO NOT version)
+app.db
+*.sqlite
+*.sqlite3
+
+# OS/editor
+.DS_Store
+.vscode/
+.idea/
+
+# Editor backups / saves
+*.save
+*.bak
+*.swp
+*~
+*.bak-*
+

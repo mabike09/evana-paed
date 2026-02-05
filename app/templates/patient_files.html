@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block title %}Files • {{ p.first_name }} {{ p.last_name }}{% endblock %}
+{% block content %}
+<h2 class="mb-3">Files for {{ p.first_name }} {{ p.last_name }}</h2>
+
+<div class="card mb-4">
+  <div class="card-body">
+    <form method="post" enctype="multipart/form-data">
+      {{ form.csrf_token }}
+      <div class="row g-3">
+        <div class="col-md-3">
+          {{ form.kind.label(class="form-label") }}
+          {{ form.kind(class="form-select") }}
+        </div>
+        <div class="col-md-4">
+          {{ form.visit_id.label(class="form-label") }}
+          {{ form.visit_id(class="form-select") }}
+        </div>
+        <div class="col-md-5">
+          {{ form.file.label(class="form-label") }}
+          {{ form.file(class="form-control") }}
+        </div>
+      </div>
+      <div class="mt-3">
+        {{ form.submit(class="btn btn-primary") }}
+        <a href="{{ url_for('patients.patient_chart', patient_id=p.id) }}" class="btn btn-outline-secondary">Back to Chart</a>
+      </div>
+    </form>
+  </div>
+</div>
+
+{% if files %}
+<table class="table table-striped align-middle">
+  <thead>
+    <tr>
+      <th>Uploaded</th>
+      <th>Kind</th>
+      <th>File</th>
+      <th>Size</th>
+      <th>Visit</th>
+      <th></th>
+    </tr>
+  </thead>
+  <tbody>
+  {% for f in files %}
+    <tr>
+      <td>{{ f.uploaded_at.strftime("%Y-%m-%d %H:%M") if f.uploaded_at else "-" }}</td>
+      <td class="text-capitalize">{{ f.kind }}</td>
+      <td>
+        <a href="{{ url_for('file_download', file_id=f.id) }}">{{ f.filename }}</a>
+      </td>
+      <td>{{ (f.size or 0) | filesizeformat }}</td>
+      <td>
+        {% if f.visit_id %}
+          <a href="{{ url_for('patients.patient_chart', patient_id=p.id) }}#visit-{{ f.visit_id }}">Visit #{{ f.visit_id }}</a>
+        {% else %}—{% endif %}
+      </td>
+      <td class="text-end">
+        <form method="post" action="{{ url_for('file_delete', file_id=f.id) }}" onsubmit="return confirm('Delete this file?')">
+          <button class="btn btn-sm btn-outline-danger">Delete</button>
+        </form>
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<div class="alert alert-info">No files uploaded yet.</div>
+{% endif %}
+{% endblock %}

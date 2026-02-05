@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block title %}Doctor’s Queue{% endblock %}
+{% block content %}
+<div class="d-flex align-items-center mb-3">
+  <h1 class="h4 mb-0 me-3">Doctor’s Queue</h1>
+  <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('patients.patients_list') }}">Back to Patients</a>
+</div>
+
+{% if entries %}
+  <div class="table-responsive">
+    <table class="table table-sm align-middle">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Patient</th>
+          <th>Visit</th>
+          <th>Added</th>
+          <th>Status</th>
+          <th class="text-end">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for e in entries %}
+          {% set p = by_id.patients.get(e.patient_id) if by_id.patients else None %}
+          {% set v = by_id.visits.get(e.visit_id) if by_id.visits else None %}
+          <tr>
+            <td>{{ e.id }}</td>
+            <td>
+              {% if p %}
+                {{ p.first_name }} {{ p.last_name }}
+              {% else %}
+                Patient #{{ e.patient_id }}
+              {% endif %}
+            </td>
+            <td>
+              {% if v %}Visit #{{ v.id }} — {{ v.visit_date }}{% else %}—{% endif %}
+            </td>
+            <td>{{ e.added_at.strftime('%Y-%m-%d %H:%M') if e.added_at else '—' }}</td>
+            <td>{{ e.status }}</td>
+            <td class="text-end">
+              <!-- Replace this with your doctor's workflow action -->
+              <a class="btn btn-sm btn-primary" href="{{ url_for('patients.patient_chart', patient_id=e.patient_id) }}">
+                Open Chart
+              </a>
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% else %}
+  <div class="alert alert-info">No patients in the doctor’s queue.</div>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h4 class="mb-0">Billing History — {{ p.first_name }} {{ p.last_name }}</h4>
+  <a class="btn btn-outline-secondary" href="{{ url_for('patients.patients_list') }}">Back to Patients</a>
+</div>
+
+{% if invoices %}
+  <div class="table-responsive">
+    <table class="table table-sm align-middle">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Date</th>
+          <th>Invoice No.</th>
+          <th>Status</th>
+          <th>Total</th>
+          <th>Paid</th>
+          <th>Balance</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for inv in invoices %}
+          {% set pays = payments_by_invoice.get(inv.id, []) %}
+          {% set paid = pays | map(attribute='amount') | sum %}
+          {% set bal = inv.total_amount - (paid or 0) %}
+          <tr>
+            <td>{{ loop.index }}</td>
+            <td>{{ inv.created_at.strftime('%Y-%m-%d %H:%M') if inv.created_at }}</td>
+            <td>{{ inv.invoice_number }}</td>
+            <td>{{ inv.status or '—' }}</td>
+            <td>{{ '{:,.0f}'.format(inv.total_amount or 0) }}</td>
+            <td>{{ '{:,.0f}'.format(paid or 0) }}</td>
+            <td>{{ '{:,.0f}'.format(bal or 0) }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% else %}
+  <div class="alert alert-info">No invoices found for this patient.</div>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,143 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Lab Results — Order #{{ order.id }}</title>
+  <style>
+    :root{
+      --fg:#111;
+      --muted:#666;
+      --line:#cfcfcf;
+    }
+    *{ box-sizing:border-box; }
+    body{
+      font-family:system-ui,-apple-system,"Segoe UI",Roboto,Ubuntu,"Helvetica Neue",Arial,sans-serif;
+      margin:24px;
+      color:var(--fg);
+    }
+    .noprint{text-align:right;margin-bottom:8px;}
+    table{border-collapse:collapse;width:100%;}
+    .grid{margin-top:10px;margin-bottom:14px;font-size:13px;}
+    .grid td,.grid th{border:1px solid var(--line);padding:8px;vertical-align:top;}
+    .grid th{width:24%;background:#f6f6f6;text-align:left;font-weight:600;}
+    .results{border-collapse:collapse;width:100%;}
+    .results th,.results td{border:1px solid var(--line);padding:8px;font-size:13px;vertical-align:top;}
+    .results th{background:#f6f6f6;text-align:left;}
+    .titlebar{text-align:center;font-weight:600;margin:8px 0 14px;}
+    .footer{margin-top:22px;font-size:13px;display:flex;justify-content:space-between;gap:16px;}
+    .note{color:var(--muted);font-size:12px;margin-top:8px;}
+    @media print{
+      .noprint{display:none;}
+      body{margin:6mm 8mm;}
+    }
+  </style>
+</head>
+<body>
+
+  <div class="noprint">
+    <button onclick="window.print()">Print</button>
+  </div>
+
+  <!-- Header -->
+  <table style="border:none;">
+    <tr>
+      <!-- Logo LEFT -->
+      <td style="width:90px;vertical-align:middle;border:none;">
+        <img src="{{ url_for('static', filename='img/bambi-logo.jpg') }}"
+             alt="Bambi Children’s Clinic"
+             style="height:100px;">
+      </td>
+
+      <!-- Clinic name/address RIGHT -->
+      <td style="text-align:right;vertical-align:middle;border:none;">
+        <div style="font-weight:700;font-size:20px;margin-bottom:2px;">BAMBI CHILDREN’S CLINIC</div>
+        <div style="font-size:12px;line-height:1.4;color:#555;">
+          Plot 854, Hoima Rd, Wakiso Town<br>
+          Tel: 0757027107<br>
+          Email: bambiclinic@gmail.com
+        </div>
+      </td>
+    </tr>
+  </table>
+
+  <!-- Patient & Order Meta -->
+  <table class="grid">
+    <tr>
+      <th>Patient Name</th>
+      <td>{{ (patient.first_name ~ ' ' ~ patient.last_name)|trim }}</td>
+      <th>Patient Number</th>
+      <td>{% if patient.patient_code %}{{ patient.patient_code }}{% else %}—{% endif %}</td>
+    </tr>
+    <tr>
+      <th>Age</th>
+      <td>
+        {% if patient.age is defined and patient.age %}
+          {{ patient.age }} years
+        {% elif patient.dob %}
+          {{ age_years if age_years is defined else '—' }}
+        {% else %}—{% endif %}
+      </td>
+      <th>Mobile Number</th>
+      <td>{{ patient.phone or patient.mobile or '—' }}</td>
+    </tr>
+    <tr>
+      <th>Order #</th>
+      <td>{{ order.id }}</td>
+      <th>Ordered</th>
+      <td>{% if order.created_at %}{{ order.created_at }}{% else %}—{% endif %}</td>
+    </tr>
+    <tr>
+      <th>Completed</th>
+      <td>{% if completed_at %}{{ completed_at }}{% else %}—{% endif %}</td>
+      <th>Requested By</th>
+      <td>{% if visit and visit.requested_by %}{{ visit.requested_by }}{% else %}—{% endif %}</td>
+    </tr>
+  </table>
+
+  <div class="titlebar">LABORATORY RESULTS</div>
+
+  <!-- Results Table -->
+  <table class="results">
+    <thead>
+      <tr>
+        <th style="width:40%;">Test</th>
+        <th style="width:25%;">Result</th>
+        <th>Notes</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for ln in lines %}
+      <tr>
+        <td>{{ ln.test_name }}</td>
+        <td>{{ ln.result_value or '—' }}</td>
+        <td>{{ ln.result_text or '—' }}</td>
+      </tr>
+      {% endfor %}
+      {% if not lines or lines|length == 0 %}
+      <tr>
+        <td colspan="3" style="text-align:center;color:var(--muted);">
+          No results captured.
+        </td>
+      </tr>
+      {% endif %}
+    </tbody>
+  </table>
+
+  <!-- Footer -->
+  <div class="footer">
+    <div>
+      <strong>Run by:</strong> {{ tech_name }}
+      <span style="color:#666;">(Print Lab technician)</span>
+    </div>
+    <div>
+      <strong>Sign:</strong> __________________________________
+    </div>
+  </div>
+
+  <div class="note">
+    This report is intended for clinical use by the requesting clinician.
+    Results should be interpreted in context of the patient’s presentation.
+  </div>
+
+</body>
+</html>

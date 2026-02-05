@@ -1,0 +1,21 @@
+Flask==3.1.2
+Flask-SQLAlchemy==3.1.1
+Flask-Migrate==4.1.0
+Flask-Login==0.6.3
+Flask-WTF==1.2.2
+WTForms==3.2.1
+SQLAlchemy==2.0.43
+alembic==1.16.5
+
+python-dotenv==1.1.1
+requests==2.32.5
+python-dateutil==2.9.0.post0
+
+# PDF/HTML exports (works on cPanel; no native builds)
+reportlab==4.4.4
+html5lib==1.1
+
+# Optional helpers you already had
+email-validator==2.2.0
+openpyxl==3.1.5
+email_validator>=2.1.0

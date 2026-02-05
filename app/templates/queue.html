@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block title %}Doctor’s Queue{% endblock %}
+{% block content %}
+<script>window.location.href = "{{ url_for('patients.doctors_queue') }}";</script>
+<noscript>
+  <div class="alert alert-info mt-3">
+    Redirecting to Doctor’s Queue… If you’re not redirected, click
+    <a href="{{ url_for('patients.doctors_queue') }}">here</a>.
+  </div>
+</noscript>
+{% endblock %}

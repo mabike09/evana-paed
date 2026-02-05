@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% block title %}Edit Patient{% endblock %}
+{% block content %}
+<h1 class="h5 mb-3">Edit Patient: {{ p.first_name }} {{ p.last_name }}</h1>
+<form method="post" novalidate>
+  {{ form.csrf_token }}
+
+  <div class="row g-3">
+    <div class="col-md-6">
+      <label class="form-label">First Name</label>
+      {{ form.first_name(class="form-control") }}
+      {% for e in form.first_name.errors %}<div class="text-danger small">{{ e }}</div>{% endfor %}
+    </div>
+    <div class="col-md-6">
+      <label class="form-label">Last Name</label>
+      {{ form.last_name(class="form-control") }}
+      {% for e in form.last_name.errors %}<div class="text-danger small">{{ e }}</div>{% endfor %}
+    </div>
+
+    <div class="col-md-4">
+      <label class="form-label">Sex</label>
+      {{ form.sex(class="form-select") }}
+    </div>
+
+    <div class="col-md-4">
+      <label class="form-label">Date of Birth</label>
+      {{ form.date_of_birth(class="form-control") }}
+    </div>
+
+    <div class="col-md-4">
+      <label class="form-label">Phone</label>
+      {{ form.phone(class="form-control") }}
+      {% for e in form.phone.errors %}<div class="text-danger small">{{ e }}</div>{% endfor %}
+    </div>
+
+    <div class="col-md-6">
+      <label class="form-label">Email</label>
+      {{ form.email(class="form-control") }}
+    </div>
+
+    <div class="col-md-6">
+      <label class="form-label">Address</label>
+      {{ form.address(class="form-control") }}
+    </div>
+
+    <div class="col-md-6">
+      <label class="form-label">Next of Kin</label>
+      {{ form.next_of_kin(class="form-control") }}
+    </div>
+
+    <div class="col-md-6">
+      <label class="form-label">Insurance Provider</label>
+      {{ form.insurance_provider(class="form-control") }}
+    </div>
+
+    <div class="col-md-6">
+      <label class="form-label">Policy Number</label>
+      {{ form.policy_number(class="form-control") }}
+    </div>
+
+    <div class="col-12">
+      <label class="form-label">Allergies</label>
+      {{ form.allergies(class="form-control") }}
+    </div>
+
+    <div class="col-12">
+      <label class="form-label">Medical History</label>
+      {{ form.medical_history(class="form-control") }}
+    </div>
+
+    <div class="col-12 form-check mt-2">
+      {{ form.consent(class="form-check-input", id="consent") }}
+      <label class="form-check-label" for="consent">Consent on file</label>
+    </div>
+
+    <div class="col-12 d-flex gap-2 mt-3">
+      <button class="btn btn-primary" type="submit">Save Patient</button>
+      <a class="btn btn-outline-secondary" href="{{ url_for('patient_detail', patient_id=p.id) }}">Cancel</a>
+    </div>
+  </div>
+</form>
+{% endblock %}

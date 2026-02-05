@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container mt-3">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h4 class="mb-0">Upload Lab Cash Pricelist (Excel)</h4>
+  </div>
+
+  <div class="alert alert-info">
+    <div><strong>Expected columns:</strong> <code>LABORATORY TEST</code>, <code>PRICE</code></div>
+    <div>Only <strong>Admin</strong> can upload.</div>
+  </div>
+
+  <form method="POST" action="{{ url_for('prices.upload_lab_cash_apply') }}" enctype="multipart/form-data">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="mb-3">
+      <label class="form-label">Excel file (.xlsx)</label>
+      <input class="form-control" type="file" name="file" accept=".xlsx" required>
+    </div>
+    <button class="btn btn-primary">Upload & Import</button>
+  </form>
+</div>
+{% endblock %}

@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Edit Patient' if edit_mode else 'New Patient' }}{% endblock %}
+{% block content %}
+<h1 class="h4 mb-3">{{ 'Edit Patient' if edit_mode else 'Register Patient' }}</h1>
+<form method="post">
+  {{ form.hidden_tag() }}
+  <div class="row g-3">
+    <div class="col-md-6">
+      {{ form.first_name.label(class="form-label") }}
+      {{ form.first_name(class="form-control") }}
+      {% for e in form.first_name.errors %}<div class="text-danger small">{{ e }}</div>{% endfor %}
+    </div>
+    <div class="col-md-6">
+      {{ form.last_name.label(class="form-label") }}
+      {{ form.last_name(class="form-control") }}
+      {% for e in form.last_name.errors %}<div class="text-danger small">{{ e }}</div>{% endfor %}
+    </div>
+    <div class="col-md-4">
+      {{ form.sex.label(class="form-label") }} {{ form.sex(class="form-select") }}
+    </div>
+    <div class="col-md-4">
+      {{ form.date_of_birth.label(class="form-label") }} {{ form.date_of_birth(class="form-control") }}
+    </div>
+    <div class="col-md-4">
+      {{ form.phone.label(class="form-label") }} {{ form.phone(class="form-control") }}
+    </div>
+    <div class="col-md-6">
+      {{ form.email.label(class="form-label") }} {{ form.email(class="form-control") }}
+    </div>
+    <div class="col-md-6">
+      {{ form.address.label(class="form-label") }} {{ form.address(class="form-control") }}
+    </div>
+    <div class="mb-3">
+      {{ form.insurance_provider.label(class="form-label") }}
+      {{ form.insurance_provider(class="form-select") }}
+      {% if form.insurance_provider.errors %}
+      <div class="text-danger small">{{ form.insurance_provider.errors[0] }}</div>
+      {% endif %}
+    </div>
+    <div class="col-md-6">
+      {{ form.policy_number.label(class="form-label") }} {{ form.policy_number(class="form-control") }}
+    </div>
+    <div class="col-12">
+      {{ form.allergies.label(class="form-label") }} {{ form.allergies(class="form-control", rows=2) }}
+    </div>
+    <div class="col-12">
+      {{ form.medical_history.label(class="form-label") }} {{ form.medical_history(class="form-control", rows=3) }}
+    </div>
+    <div class="col-12 form-check">
+      {{ form.consent(class="form-check-input") }} {{ form.consent.label(class="form-check-label") }}
+    </div>
+  </div>
+  <div class="mt-3">
+    {{ form.submit(class="btn btn-primary") }}
+  </div>
+</form>
+{% endblock %}

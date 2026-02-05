@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Invoice {{ invoice.number or invoice.id }}</title>
+  <style>
+    :root { --fg:#000; --muted:#333; }
+    body { font: 14px/1.45 "DejaVu Sans", Arial, sans-serif; color:var(--fg); margin: 16px; }
+    .container { max-width: 900px; margin: 0 auto; }
+    .center { text-align:center; }
+    .right { text-align:right; }
+    .bold { font-weight: 700; }
+    .tiny { font-size: 12px; color: var(--muted); }
+    .headline { font-size: 18px; font-weight: 800; margin: 6px 0 10px; text-transform: uppercase; }
+    .line { border-top:1px solid #000; margin:10px 0; }
+    table { width:100%; border-collapse:collapse; }
+    th, td { padding:8px 10px; border-bottom:1px solid #ddd; vertical-align:top; }
+    th { text-align:left; background:#fafafa; }
+    .totals td { border-bottom:0; }
+    .actions { text-align:right; margin: 10px 0 16px; }
+    .btn { display:inline-block; padding:8px 12px; border:1px solid #bbb; background:#fff; cursor:pointer; }
+    @media print { .actions{display:none} .container{max-width:none; margin:0 12mm;} body{margin:0;} }
+  </style>
+</head>
+<body>
+<div class="container">
+
+  <div class="actions">
+    <button class="btn" onclick="window.print()">Print</button>
+  </div>
+
+  <!-- Header -->
+  <table>
+    <tr>
+      <!-- Logo LEFT -->
+      <td style="width:90px; vertical-align:middle;">
+        <img src="{{ url_for('static', filename='img/bambi-logo.jpg') }}" alt="Bambi Children’s Clinic" style="height:100px;">
+      </td>
+
+      <!-- Clinic name/address RIGHT -->
+      <td class="right" style="vertical-align:middle;">
+        <div class="headline" style="margin-top:2px;">BAMBI CHILDREN’S CLINIC</div>
+        <div class="tiny" style="margin-top:1px;">
+          Plot 854, Hoima Rd, Wakiso Town<br>
+          Tel: 0757027107 • bambiclinic@gmail.com
+        </div>
+      </td>
+    </tr>
+  </table>
+
+  <div class="headline">Invoice</div>
+
+  <!-- Patient / Billing block -->
+  <table>
+    <tr>
+      <td style="width:50%;">
+        <div class="tiny"><span class="bold">Patient Name:</span> {{ patient.first_name }} {{ patient.last_name }}</div>
+        <div class="tiny"><span class="bold">Patient No:</span> {{ patient.patient_code or '-' }}</div>
+        {% if invoice.payer_type == 'Insurance' %}
+          <div class="tiny"><span class="bold">Member Number:</span> {{ patient.policy_number or '-' }}</div>
+        {% endif %}
+      </td>
+      <td style="width:50%;" class="right tiny">
+        <div><span class="bold">Invoice Number:</span> {{ invoice.number or invoice.id }}</div>
+        <div><span class="bold">Date of Visit:</span> {{ invoice.issue_date }}</div>
+        {% if invoice.payer_type == 'Insurance' %}
+          <div><span class="bold">Bill To:</span> {{ patient.insurance_provider or 'Insurance' }}</div>
+        {% else %}
+          <div><span class="bold">Bill To:</span> Cash</div>
+        {% endif %}
+      </td>
+    </tr>
+  </table>
+
+  <div class="line"></div>
+
+  <!-- Items table -->
+  <table>
+    <thead>
+      <tr>
+        <th style="width:8%;">Item No.</th>
+        <th>Item</th>
+        <th class="right" style="width:12%;">Quantity</th>
+        <th class="right" style="width:18%;">Unit Cost (UGX)</th>
+        <th class="right" style="width:18%;">Cost (UGX)</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% set grand = 0 %}
+      {% for line in (invoice.lines or []) %}
+        {% set qty = (line.qty or 0) %}
+        {% set unit = (line.unit_price or 0) %}
+        {% set lt = (line.line_total or (qty*unit)) %}
+        {% set grand = grand + lt %}
+        <tr>
+          <td>{{ loop.index }}.</td>
+          <td>{{ line.description }}</td>
+          <td class="right">{{ '{:,.2f}'.format(qty) }}</td>
+          <td class="right">{{ '{:,.0f}'.format(unit) }}</td>
+          <td class="right">{{ '{:,.0f}'.format(lt) }}</td>
+        </tr>
+      {% endfor %}
+      {% if not invoice.lines %}
+      <tr><td colspan="5" class="tiny">No line items.</td></tr>
+      {% endif %}
+    </tbody>
+  </table>
+
+  <!-- Totals -->
+  {% set subtotal = (grand or invoice.amount or 0) %}
+  {% set paid = invoice.paid_total or 0 %}
+  {% set balance = (subtotal - paid) %}
+  <table class="totals" style="margin-top:10px;">
+    <tr>
+      <td style="width:60%"></td>
+      <td class="right tiny" style="width:20%;"><span class="bold">SUBTOTAL</span></td>
+      <td class="right tiny" style="width:20%;"><span class="bold">{{ '{:,.0f}'.format(subtotal) }}</span></td>
+    </tr>
+    <tr>
+      <td></td>
+      <td class="right tiny">Paid</td>
+      <td class="right tiny">{{ '{:,.0f}'.format(paid) }}</td>
+    </tr>
+    <tr>
+      <td></td>
+      <td class="right tiny"><span class="bold">BALANCE</span></td>
+      <td class="right tiny"><span class="bold">{{ '{:,.0f}'.format(balance) }}</span></td>
+    </tr>
+  </table>
+
+  <!-- Signature / Prepared by -->
+  <table style="margin-top:28px; width:100%; border-collapse:collapse;">
+    <tr>
+      <td class="tiny bold" style="width:160px; vertical-align:bottom;">Prepared by:</td>
+      <td style="vertical-align:bottom;">
+        <div class="sig-wrap">
+          <div class="sig-line">&nbsp;</div>
+          <div class="sig-name tiny">
+            {{ prepared_by_name or (current_user.username if current_user.is_authenticated else '') }}
+          </div>
+        </div>
+      </td>
+      <td style="width:20%"></td>
+    </tr>
+  </table>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block title %}Triage — {{ p.first_name }} {{ p.last_name }}{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h1 class="h5 mb-0">Triage — {{ p.first_name }} {{ p.last_name }}</h1>
+  <a class="btn btn-outline-secondary" href="{{ url_for('patients.triage_queue') }}">Back to Triage Queue</a>
+</div>
+
+<form method="post">
+  {{ form.hidden_tag() }}
+
+  <div class="row g-3">
+    <div class="col-sm-4">
+      <label class="form-label">Weight (kg)</label>
+      {{ form.weight_kg(class="form-control") }}
+    </div>
+    <div class="col-sm-4">
+      <label class="form-label">Height (cm)</label>
+      {{ form.height_cm(class="form-control") }}
+    </div>
+    <div class="col-sm-4">
+      <label class="form-label">Temperature (°C)</label>
+      {{ form.temp_c(class="form-control") }}
+    </div>
+    <div class="col-sm-4">
+      <label class="form-label">Pulse (bpm)</label>
+      {{ form.pulse_bpm(class="form-control") }}
+    </div>
+    <div class="col-sm-4">
+      <label class="form-label">BP Systolic</label>
+      {{ form.bp_sys(class="form-control") }}
+    </div>
+    <div class="col-sm-4">
+      <label class="form-label">BP Diastolic</label>
+      {{ form.bp_dia(class="form-control") }}
+    </div>
+    <div class="col-sm-4">
+      <label class="form-label">SpO₂ (%)</label>
+      {{ form.spo2(class="form-control") }}
+    </div>
+    <div class="col-12">
+      <label class="form-label">Notes</label>
+      {{ form.notes(class="form-control", rows="3") }}
+    </div>
+  </div>
+
+  <div class="mt-3 d-flex gap-2">
+    <a class="btn btn-link" href="{{ url_for('patients.triage_queue') }}">Cancel</a>
+    <button class="btn btn-primary" type="submit">Complete Triage & Send to Doctor</button>
+  </div>
+</form>
+{% endblock %}

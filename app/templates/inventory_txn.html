@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block title %}Inventory Transaction{% endblock %}
+{% block content %}
+<h1 class="h5 mb-3">Record Inventory Transaction</h1>
+<form method="post">
+  {{ form.hidden_tag() }}
+  <div class="row g-2">
+    <div class="col-md-6">{{ form.item_id.label(class="form-label") }} {{ form.item_id(class="form-select") }}</div>
+    <div class="col-md-3">{{ form.qty.label(class="form-label") }} {{ form.qty(class="form-control") }}</div>
+    <div class="col-md-3">{{ form.reason.label(class="form-label") }} {{ form.reason(class="form-select") }}</div>
+    <div class="col-12">{{ form.note.label(class="form-label") }} {{ form.note(class="form-control") }}</div>
+  </div>
+  <button class="btn btn-primary btn-sm mt-2">Save</button>
+</form>
+{% endblock %}

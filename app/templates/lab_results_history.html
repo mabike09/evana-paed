@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}Lab History — {{ patient.first_name }} {{ patient.last_name }}{% endblock %}
+{% block content %}
+<div class="d-flex align-items-center mb-3">
+  <h1 class="h5 mb-0">Lab History — {{ patient.first_name }} {{ patient.last_name }}</h1>
+  <div class="ms-auto">
+    <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('patients.patient_chart', patient_id=patient.id, tab='lab') }}">Back to Chart</a>
+  </div>
+</div>
+
+{% if summary and summary|length > 0 %}
+  <div class="list-group">
+    {% for row in summary %}
+      <div class="list-group-item">
+        <div class="d-flex justify-content-between">
+          <div>
+            <div class="fw-semibold">Order #{{ row.order.id }}{% if row.order.created_at %} — {{ row.order.created_at }}{% endif %}</div>
+            <div class="small text-muted">Status: {{ row.order.status or '—' }}</div>
+          </div>
+          <div>
+            <a class="btn btn-sm btn-outline-primary" target="_blank"
+               href="{{ url_for('lab.lab_results_print', order_id=row.order.id) }}">Print</a>
+          </div>
+        </div>
+        {% if row.tests and row.tests|length > 0 %}
+          <ul class="mt-2 mb-0">
+            {% for t in row.tests %}
+              <li>{{ t }}</li>
+            {% endfor %}
+          </ul>
+        {% else %}
+          <div class="text-muted mt-2">No results captured.</div>
+        {% endif %}
+      </div>
+    {% endfor %}
+  </div>
+{% else %}
+  <div class="alert alert-light border">No previous lab orders found for this patient.</div>
+{% endif %}
+{% endblock %}

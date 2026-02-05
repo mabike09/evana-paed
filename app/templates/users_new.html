@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-lg-6 col-md-8">
+    <h4 class="mb-3">Create User</h4>
+    <form method="POST">
+      {{ form.hidden_tag() }}
+
+      <div class="mb-3">
+        <label class="form-label">{{ form.username.label }}</label>
+        {{ form.username(class="form-control", placeholder="username") }}
+      </div>
+
+      <div class="mb-3">
+        <label class="form-label">{{ form.email.label }}</label>
+        {{ form.email(class="form-control", placeholder="name@example.com") }}
+      </div>
+
+      <div class="mb-3">
+        <label class="form-label">{{ form.role.label }}</label>
+        {{ form.role(class="form-select") }}
+      </div>
+
+      <div class="mb-3">
+        <label class="form-label">{{ form.password.label }}</label>
+        {{ form.password(class="form-control", type="password", placeholder="Password (min 6 chars)") }}
+      </div>
+
+      <div class="mb-3">
+        <label class="form-label">{{ form.confirm.label }}</label>
+        {{ form.confirm(class="form-control", type="password", placeholder="Confirm password") }}
+      </div>
+
+      <div class="d-flex gap-2">
+        {{ form.submit(class="btn btn-primary") }}
+        <a class="btn btn-outline-secondary" href="{{ url_for('auth.users_list') }}">Cancel</a>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

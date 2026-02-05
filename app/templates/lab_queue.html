@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block title %}Lab Queue{% endblock %}
+{% block content %}
+<div class="d-flex align-items-center mb-3">
+  <h1 class="h4 mb-0">Lab Queue</h1>
+</div>
+
+{% set _by_pat = (by_id.patients if by_id is defined and by_id.get('patients') else {}) %}
+{% set _by_vis = (by_id.visits if by_id is defined and by_id.get('visits') else {}) %}
+
+{% if orders and orders|length %}
+  <div class="list-group">
+    {% for o in orders %}
+      <div class="list-group-item">
+        <div class="d-flex justify-content-between align-items-center">
+          <div class="me-3">
+            <strong>#{{ o.id }}</strong>
+
+            {% set pt = _by_pat.get(o.patient_id) %}
+            {% if pt %}
+              &nbsp;&middot;&nbsp; {{ pt.first_name }} {{ pt.last_name }} (ID {{ pt.id }})
+            {% else %}
+              &nbsp;&middot;&nbsp; Patient #{{ o.patient_id }}
+            {% endif %}
+
+            {% if o.visit_id %}
+              {% set vt = _by_vis.get(o.visit_id) %}
+              {% if vt %} &nbsp;&middot;&nbsp; Visit #{{ vt.id }} on {{ vt.visit_date }}{% endif %}
+            {% endif %}
+
+            {% if o.created_at %} &nbsp;&middot;&nbsp; {{ o.created_at }}{% endif %}
+          </div>
+
+          <div class="ms-3">
+            <a class="btn btn-sm btn-primary" href="{{ url_for('lab.lab_enter_results', order_id=o.id) }}">
+              Enter Results
+            </a>
+          </div>
+        </div>
+
+        {# Tests requested as badges #}
+        {% set tests = tests_by_order_id.get(o.id, []) if tests_by_order_id is defined else [] %}
+        <div class="mt-2">
+          <span class="text-muted">Tests:</span>
+          {% if tests and tests|length %}
+            {% for t in tests %}
+              <span class="badge rounded-pill text-bg-light border">{{ t }}</span>
+            {% endfor %}
+          {% else %}
+            <span class="text-muted fst-italic">None listed</span>
+          {% endif %}
+        </div>
+
+        {# Optional: show per-line with status #}
+        {% if o.lines is defined and o.lines %}
+          <ul class="small mt-2 mb-0">
+            {% for ln in o.lines %}
+              <li>
+                {{ ln.test_name or (ln.procedure.name if ln.procedure and ln.procedure.name) or 'Test' }}
+                {% if ln.status %}<span class="text-muted"> — {{ ln.status }}</span>{% endif %}
+              </li>
+            {% endfor %}
+          </ul>
+        {% endif %}
+      </div>
+    {% endfor %}
+  </div>
+{% else %}
+  <p class="text-muted">No pending lab orders.</p>
+{% endif %}
+{% endblock %}

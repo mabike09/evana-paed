@@ -1,0 +1,129 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Receipt {{ pay.receipt_no or ('RC-' ~ pay.id) }}</title>
+  <style>
+    @page { size: 80mm auto; margin: 4mm; }
+    body {
+      width: 72mm;
+      margin: 0 auto;
+      font-family: ui-monospace, Menlo, Consolas, "Liberation Mono", monospace;
+      font-size: 12px;
+      line-height: 1.0;
+      color: #000;
+    }
+    .actions { margin: 6px 0 10px; }
+    @media print { .actions { display: none; } }
+
+    .center { text-align: center; }
+    .kv { display: flex; justify-content: space-between; gap: 8px; }
+    .line { border-top: 1px dashed #000; margin: 6px 0; }
+    .hdr { font-weight: 700; }
+
+    .logo { height: 28px; margin-bottom: 2px; }
+    .small { font-size: 11px; }
+    .muted { color: #000; opacity: .85; }
+
+    .row { display: flex; justify-content: space-between; align-items: flex-start; }
+    .item-name { text-align: left; flex: 1; }
+    .num { text-align: right; min-width: 18mm; flex: 0 0 18mm; }
+
+    .spacer-4 { height: 4mm; }
+    .spacer-8 { height: 8mm; }
+    .signature-box { height: 40mm; border: 1px solid #000; margin-top: 2mm; }
+  </style>
+</head>
+<body>
+  <!-- On-screen print button -->
+  <div class="actions">
+    <button onclick="window.print()">Print</button>
+  </div>
+
+  <script>
+    // Auto-open print dialog when page loads
+    window.addEventListener("load", () => window.print());
+  </script>
+
+  <!-- Header -->
+  <div class="center">
+    <!-- Use an existing file from static/img -->
+    <img src="{{ url_for('static', filename='img/bambi_paed_logo.png') }}"
+         alt="Bambi Children’s Clinic" class="logo"><br>
+
+    <div class="hdr">BAMBI CHILDREN’S CLINIC</div>
+    <div class="small muted">Plot 854, Hoima Rd, Wakiso Town</div>
+    <div class="small muted">Tel: 0757027107 • bambiclinic@gmail.com</div>
+  </div>
+
+  <div class="line"></div>
+
+  {% set _date_str = date_str if date_str is defined and date_str else (
+        pay.payment_date if pay.payment_date else (
+          pay.created_at.strftime('%Y-%m-%d') if pay.created_at is defined and pay.created_at
+          else ''
+        )
+     )
+  %}
+
+  <!-- Title & meta -->
+  <div class="kv"><span class="hdr">RECEIPT</span><span>{{ _date_str }}</span></div>
+  <div class="kv"><span>Receipt No:</span><span>{{ pay.receipt_no or ('RC-' ~ pay.id) }}</span></div>
+  <div class="kv"><span>Invoice:</span><span>{{ inv.number if inv else '—' }}</span></div>
+
+  {% set _pname = (p.first_name ~ ' ' ~ p.last_name) if p else '' %}
+  {% set _pcode = (p.patient_code if p and p.patient_code else ('ID ' ~ (p.id if p else ''))) %}
+  <div class="kv"><span>Patient:</span><span>{{ _pname }}</span></div>
+  <div class="kv"><span>Patient No:</span><span>{{ _pcode }}</span></div>
+
+  <div class="line"></div>
+
+  <!-- Line items -->
+  {% set items = safe_lines if safe_lines is defined else [] %}
+  {% if items and items|length %}
+    {% for ln in items %}
+      {% set _qty = ln.qty if ln.qty is not none else 1 %}
+      {% set _unit = ln.unit_price if ln.unit_price is not none else 0 %}
+      {% set _total = ln.line_total if ln.line_total is not none else (_qty * _unit) %}
+        <div class="row">
+          <div class="item-name">
+            {{ ln.description or '—' }}
+            <div class="small muted">Qty {{ _qty }}</div>
+          </div>
+          <div class="num">{{ '%.0f'|format(_total or 0) }}</div>
+        </div>
+    {% endfor %}
+    <div class="line"></div>
+  {% else %}
+    <div class="small muted">No line items available.</div>
+    <div class="line"></div>
+  {% endif %}
+
+  {% set _subtotal = subtotal if subtotal is defined else (inv.amount if inv else (pay.amount or 0)) %}
+  {% set _paid_to_date = paid_to_date if paid_to_date is defined else (
+        (inv.payments|map(attribute='amount')|sum) if inv and inv.payments is defined else (pay.amount or 0)
+     )
+  %}
+  {% set _balance = balance if balance is defined else ((_subtotal or 0) - (_paid_to_date or 0)) %}
+
+  <div class="kv"><span>Subtotal</span><span>UGX {{ '%.0f'|format(_subtotal or 0) }}</span></div>
+  <div class="kv"><span>Paid This Receipt</span><span><strong>UGX {{ '%.0f'|format(pay.amount or 0) }}</strong></span></div>
+  <div class="kv"><span>Total Paid To Date</span><span>UGX {{ '%.0f'|format(_paid_to_date or 0) }}</span></div>
+  <div class="kv"><span>Balance</span><span>UGX {{ '%.0f'|format(_balance or 0) }}</span></div>
+
+  <div class="line"></div>
+
+  <!-- Receiver (FIXED: no hasattr) -->
+  {% set _receiver = (pay.received_by if pay.received_by is defined and pay.received_by else (current_user.username if current_user else '')) %}
+  <div>Received by: {{ _receiver or '—' }}</div>
+
+    <div style="width: 72mm; height: 40mm;" >
+      <div class="small muted"></div>
+      <div class="signature-box"></div>
+    </div>
+
+  <div class="spacer-8"></div>
+  <div class="center small">Thank you for your visit!</div>
+  <div class="center small muted">bambiclinic@gmail.com</div>
+</body>
+</html>

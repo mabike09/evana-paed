@@ -1,0 +1,144 @@
+<!-- app/templates/prices_upload.html -->
+{% extends "base.html" %}
+{% block title %}Upload Price List{% endblock %}
+{% block content %}
+<h1 class="h4 mb-3">Upload Price List</h1>
+<p class="text-muted">
+  Upload a CSV in the standard format (you can start from the provided export files).
+  Select the payer and the pricebook so the data routes to the right place.
+</p>
+
+<form method="post" enctype="multipart/form-data" action="{{ url_for('prices.upload_price_apply') }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+  <div class="row g-3">
+    <div class="col-md-4">
+      <label class="form-label">Payer (Cash or Insurance)</label>
+      <select class="form-select" name="payer_id" id="payer_id" required>
+        <option value="">— Select payer —</option>
+      </select>
+      <div class="form-text">This determines which pricebook owner you’re uploading for.</div>
+    </div>
+
+    <div class="col-md-4">
+      <label class="form-label">Existing Pricebook (optional)</label>
+      <select class="form-select" name="pricebook_id" id="pricebook_id">
+        <option value="">— Create a new pricebook instead —</option>
+      </select>
+      <div class="form-text">Filtered by the payer you choose.</div>
+    </div>
+  </div>
+
+  <div class="border rounded p-3 mt-3">
+    <div class="form-check mb-2">
+      <input class="form-check-input" type="checkbox" id="create_new_toggle" checked>
+      <label class="form-check-label" for="create_new_toggle">
+        Create a new pricebook (leave checked unless you picked an existing one).
+      </label>
+    </div>
+
+    <div class="row g-3" id="new_book_fields">
+      <div class="col-md-4">
+        <label class="form-label">New Pricebook Name</label>
+        <input class="form-control" type="text" name="new_book_name" placeholder="e.g., ICEA 2025 Q4">
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">Currency</label>
+        <input class="form-control" type="text" name="new_currency" value="UGX" maxlength="3">
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Effective Date</label>
+        <input class="form-control" type="date" name="new_effective_date">
+      </div>
+    </div>
+  </div>
+
+  <div class="mt-3">
+    <label class="form-label">CSV File</label>
+    <input class="form-control" type="file" name="file" accept=".csv" required>
+  </div>
+
+  <button class="btn btn-primary mt-3">Upload</button>
+</form>
+
+<hr class="my-4">
+<h2 class="h6">CSV Columns</h2>
+<pre class="small bg-light p-3 border">
+payer,payer_type,item_type,item_code,item_name,unit,category,sell_price,buy_price,currency,effective_date,sheet
+</pre>
+<p class="small text-muted mb-0">
+  - <strong>item_type</strong>: lab | procedure | drug (unknown is allowed but won’t map to catalogs until corrected)<br>
+  - <strong>buy_price</strong>: optional (mainly for drugs).<br>
+  - If you select payer/pricebook here, those will override CSV payer/book in a safe way.
+</p>
+
+<script>
+  // Data from Flask for client-side dropdown logic
+  const PAYERS = {{ payers_json|safe }};
+  const BOOKS = {{ books_json|safe }};
+
+  const payerSel = document.getElementById('payer_id');
+  const bookSel  = document.getElementById('pricebook_id');
+  const newToggle = document.getElementById('create_new_toggle');
+  const newFields = document.getElementById('new_book_fields');
+
+  function renderPayers() {
+    // Group by payer_type to show Cash first then Insurance
+    const sorted = [...PAYERS].sort((a,b) => {
+      if (a.payer_type === b.payer_type) return a.name.localeCompare(b.name);
+      return a.payer_type.localeCompare(b.payer_type);
+    });
+    for (const p of sorted) {
+      const opt = document.createElement('option');
+      const typeLabel = p.payer_type === 'insurance' ? 'Insurance' : 'Cash';
+      opt.value = p.id;
+      opt.textContent = `${p.name} — ${typeLabel}`;
+      payerSel.appendChild(opt);
+    }
+  }
+
+  function renderBooksForPayer(payerId) {
+    // reset
+    bookSel.innerHTML = '';
+    const blank = document.createElement('option');
+    blank.value = '';
+    blank.textContent = '— Create a new pricebook instead —';
+    bookSel.appendChild(blank);
+
+    if (!payerId) return;
+    const pid = parseInt(payerId, 10);
+    const filtered = BOOKS.filter(b => b.payer_id === pid)
+                          .sort((a,b) => a.name.localeCompare(b.name));
+    for (const b of filtered) {
+      const opt = document.createElement('option');
+      opt.value = b.id;
+      opt.textContent = b.name;
+      bookSel.appendChild(opt);
+    }
+  }
+
+  payerSel.addEventListener('change', (e) => {
+    renderBooksForPayer(e.target.value);
+  });
+
+  bookSel.addEventListener('change', (e) => {
+    // If user picked an existing pricebook, turn OFF "create new"
+    const pickedExisting = !!e.target.value;
+    newToggle.checked = !pickedExisting;
+    newFields.style.display = newToggle.checked ? '' : 'none';
+  });
+
+  newToggle.addEventListener('change', (e) => {
+    // If user insists on creating a new book, clear existing selection
+    if (e.target.checked) {
+      bookSel.value = '';
+    }
+    newFields.style.display = e.target.checked ? '' : 'none';
+  });
+
+  // initial render
+  renderPayers();
+  renderBooksForPayer('');
+  newFields.style.display = newToggle.checked ? '' : 'none';
+</script>
+{% endblock %}
