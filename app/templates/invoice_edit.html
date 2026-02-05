@@ -9,39 +9,129 @@
 <form method="post">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
+  <div class="d-flex justify-content-between align-items-center mb-2">
+    <div class="text-muted small">Add/remove lines, then click “Save Changes”.</div>
+    <button type="button" class="btn btn-sm btn-outline-primary" id="btnAddLine">+ Add item</button>
+  </div>
+
   <div class="table-responsive">
     <table class="table table-sm align-middle">
       <thead>
         <tr>
-          <th>Delete</th>
+          <th style="width:110px;">Delete</th>
           <th>Description</th>
           <th style="width:120px;">Qty</th>
           <th style="width:160px;">Unit (UGX)</th>
           <th style="width:160px;">Line Total (UGX)</th>
         </tr>
       </thead>
-      <tbody>
+
+      <tbody id="invoiceLinesTbody">
         {% for l in inv.lines %}
-          <tr>
+          <tr class="inv-line" data-existing="1">
             <td>
-              <input type="checkbox" name="delete[]" value="{{ l.id }}">
+              <!-- keep existing delete logic (checkbox) -->
+              <input type="checkbox" name="delete[]" value="{{ l.id }}" class="delete-check">
               <input type="hidden" name="line_id[]" value="{{ l.id }}">
               <input type="hidden" name="procedure_id[]" value="{{ l.procedure_id or '' }}">
               <input type="hidden" name="item_id[]" value="{{ l.item_id or '' }}">
+
+              <!-- nicer delete button -->
+              <button type="button" class="btn btn-sm btn-outline-danger ms-1 btnRowDelete">Del</button>
             </td>
+
             <td><input type="text" class="form-control" name="desc[]" value="{{ l.description }}"></td>
-            <td><input type="number" step="1" min="0" class="form-control" name="qty[]" value="{{ l.qty or 1 }}"></td>
-            <td><input type="number" step="1" min="0" class="form-control" name="price[]" value="{{ l.unit_price or 0 }}"></td>
-            <td class="text-end">{{ '%.0f'|format(l.line_total or 0) }}</td>
+            <td><input type="number" step="1" min="0" class="form-control qty" name="qty[]" value="{{ l.qty or 1 }}"></td>
+            <td><input type="number" step="1" min="0" class="form-control price" name="price[]" value="{{ l.unit_price or 0 }}"></td>
+            <td class="text-end line-total">{{ '%.0f'|format(l.line_total or 0) }}</td>
           </tr>
         {% endfor %}
       </tbody>
     </table>
   </div>
 
+  <!-- hidden row template for NEW lines -->
+  <table class="d-none">
+    <tbody>
+      <tr id="lineTemplate" class="inv-line" data-existing="0">
+        <td>
+          <!-- for new rows: keep arrays aligned -->
+          <input type="checkbox" class="delete-check d-none" disabled>
+          <input type="hidden" name="line_id[]" value="">
+          <input type="hidden" name="procedure_id[]" value="">
+          <input type="hidden" name="item_id[]" value="">
+          <button type="button" class="btn btn-sm btn-outline-danger btnRowDelete">Del</button>
+        </td>
+
+        <td><input type="text" class="form-control" name="desc[]" value=""></td>
+        <td><input type="number" step="1" min="0" class="form-control qty" name="qty[]" value="1"></td>
+        <td><input type="number" step="1" min="0" class="form-control price" name="price[]" value="0"></td>
+        <td class="text-end line-total">0</td>
+      </tr>
+    </tbody>
+  </table>
+
   <div class="mt-3 d-flex gap-2">
     <a class="btn btn-link" href="{{ url_for('billing.patient_billing', patient_id=inv.patient_id) }}">Cancel</a>
     <button class="btn btn-primary">Save Changes</button>
   </div>
 </form>
+
+<script>
+(function () {
+  const tbody = document.getElementById("invoiceLinesTbody");
+  const btnAdd = document.getElementById("btnAddLine");
+  const tpl = document.getElementById("lineTemplate");
+
+  function toNum(v){ v = (v || "").toString().replace(/,/g,"").trim(); const n = Number(v); return isNaN(n) ? 0 : n; }
+
+  function recalcRow(tr){
+    const q = toNum(tr.querySelector(".qty")?.value);
+    const p = toNum(tr.querySelector(".price")?.value);
+    const total = q * p;
+    const td = tr.querySelector(".line-total");
+    if (td) td.textContent = Math.round(total).toString();
+  }
+
+  btnAdd?.addEventListener("click", () => {
+    const clone = tpl.cloneNode(true);
+    clone.removeAttribute("id");
+    tbody.appendChild(clone);
+    recalcRow(clone);
+    // focus description
+    const desc = clone.querySelector('input[name="desc[]"]');
+    if (desc) desc.focus();
+  });
+
+  document.addEventListener("click", (e) => {
+    const btn = e.target.closest(".btnRowDelete");
+    if (!btn) return;
+
+    const tr = btn.closest("tr.inv-line");
+    if (!tr) return;
+
+    const isExisting = tr.getAttribute("data-existing") === "1";
+
+    if (isExisting) {
+      // mark for deletion using existing checkbox + hide row
+      const chk = tr.querySelector(".delete-check");
+      if (chk) chk.checked = true;
+      tr.style.display = "none";
+    } else {
+      // new unsaved row -> remove from DOM
+      tr.remove();
+    }
+  });
+
+  document.addEventListener("input", (e) => {
+    if (e.target.matches(".qty,.price")) {
+      const tr = e.target.closest("tr.inv-line");
+      if (tr) recalcRow(tr);
+    }
+  });
+
+  // initial totals
+  document.querySelectorAll("tr.inv-line").forEach(recalcRow);
+})();
+</script>
 {% endblock %}
