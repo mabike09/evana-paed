@@ -38,6 +38,11 @@ try:
 except Exception:
     LabOrder = None
 
+try:
+    from ..models import PriceBook, PriceItem
+except Exception:
+    PriceBook = PriceItem = None
+
 
 # ------------------------------------------------------------------------------
 # Create Invoice
@@ -389,6 +394,82 @@ def _get_patient_insurer(patient_id: int):
     return None
 
 
+def _resolve_price_book_for_patient(patient: Patient):
+    if not (PriceBook and patient):
+        return None
+
+    ip_raw = (getattr(patient, "insurance_provider", "") or "").strip()
+    if ip_raw:
+        try:
+            if hasattr(PriceBook, "insurer_id") and Insurer:
+                ins = Insurer.query.filter(Insurer.name.ilike(ip_raw)).first()
+                if ins:
+                    book = PriceBook.query.filter_by(insurer_id=ins.id).order_by(PriceBook.id.desc()).first()
+                    if book:
+                        return book
+        except Exception:
+            pass
+        try:
+            book = (
+                PriceBook.query
+                .filter(PriceBook.name.ilike(f"%{ip_raw}%"))
+                .order_by(PriceBook.id.desc())
+                .first()
+            )
+            if book:
+                return book
+        except Exception:
+            pass
+
+    candidates = []
+    try:
+        q = PriceBook.query
+        if hasattr(PriceBook, "active"):
+            q = q.filter_by(active=True)
+        candidates = q.order_by(PriceBook.id.desc()).all()
+    except Exception:
+        candidates = []
+
+    for book in candidates:
+        name = (getattr(book, "name", "") or "").lower()
+        book_type = (getattr(book, "type", "") or "").lower()
+        if "cash" in name or book_type == "cash":
+            return book
+
+    return candidates[0] if candidates else None
+
+
+def _lab_items_from_book(book, query: str):
+    if not (PriceItem and book):
+        return []
+
+    items = []
+    try:
+        q = PriceItem.query.filter_by(pricebook_id=book.id)
+        if hasattr(PriceItem, "item_type"):
+            q = q.filter(PriceItem.item_type == "lab")
+        if query:
+            if hasattr(PriceItem, "item_name"):
+                q = q.filter(PriceItem.item_name.ilike(f"%{query}%"))
+            elif hasattr(PriceItem, "item_code"):
+                q = q.filter(PriceItem.item_code.ilike(f"%{query}%"))
+        order_col = PriceItem.item_name if hasattr(PriceItem, "item_name") else PriceItem.id
+        rows = q.order_by(order_col.asc()).limit(10).all()
+        for r in rows:
+            name = getattr(r, "item_name", None) or getattr(r, "item_code", None) or "Lab Test"
+            price = (
+                getattr(r, "price", None)
+                or getattr(r, "sell_price", None)
+                or getattr(r, "amount", None)
+                or 0
+            )
+            items.append({"id": r.id, "name": name, "price": float(price or 0)})
+    except Exception:
+        return []
+
+    return items
+
+
 @bp.route("/api/search/catalog")
 @login_required
 def api_search_catalog():
@@ -396,12 +477,14 @@ def api_search_catalog():
     patient_id = request.args.get("patient_id", type=int)
     insurer = _get_patient_insurer(patient_id) if patient_id else None
     results = []
+    seen = set()
     if not q:
         return jsonify(results)
 
     # Procedures
     procs = Procedure.query.filter(Procedure.name.ilike(f"%{q}%")).limit(10).all()
     for p_ in procs:
+        seen.add((p_.name or "").strip().lower())
         price = Decimal(getattr(p_, "default_price", 0) or 0)
         if insurer and ProcedurePrice:
             try:
@@ -437,6 +520,33 @@ def api_search_catalog():
             "text": f"{d.name} (UGX {price:,.0f})",
             "price": float(price)
         })
+
+    # Lab tests from price book (if available)
+    if patient_id and PriceBook and PriceItem:
+        patient = Patient.query.get(patient_id)
+        book = _resolve_price_book_for_patient(patient)
+        for lab in _lab_items_from_book(book, q):
+            name = lab.get("name", "Lab Test")
+            if name.strip().lower() in seen:
+                continue
+            proc_id = None
+            if Procedure:
+                try:
+                    proc_q = Procedure.query.filter(Procedure.name.ilike(name))
+                    if hasattr(Procedure, "category"):
+                        proc_q = proc_q.filter(Procedure.category.ilike("lab"))
+                    proc = proc_q.first()
+                    proc_id = getattr(proc, "id", None) if proc else None
+                except Exception:
+                    proc_id = None
+            results.append({
+                "id": f"lab-{lab.get('id')}",
+                "kind": "procedure" if proc_id else "other",
+                "category": "lab",
+                "ref_id": proc_id or "",
+                "text": f"{name} (UGX {lab.get('price', 0):,.0f})",
+                "price": float(lab.get("price", 0) or 0)
+            })
 
     return jsonify(results)
 
