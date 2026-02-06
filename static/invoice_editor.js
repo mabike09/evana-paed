@@ -12,6 +12,11 @@
   const UGX = (n) => `UGX ${Number(n || 0).toFixed(2)}`;
 
   function recalcRowTotal(tr) {
+    const deleteCheck = tr.querySelector('.delete-check');
+    if (deleteCheck && deleteCheck.checked) {
+      tr.querySelector('.inv-total').textContent = UGX(0);
+      return 0;
+    }
     const qty = parseFloat(tr.querySelector('.inv-qty').value || '0');
     const price = parseFloat(tr.querySelector('.inv-price').value || '0');
     const total = (qty * price) || 0;
@@ -22,9 +27,11 @@
   function recalcGrand() {
     let sum = 0;
     linesBody.querySelectorAll('tr.inv-line:not(#line-template)').forEach((tr) => {
+      const deleteCheck = tr.querySelector('.delete-check');
+      if (deleteCheck && deleteCheck.checked) return;
       sum += recalcRowTotal(tr);
     });
-    grandTotalEl.textContent = UGX(sum);
+    if (grandTotalEl) grandTotalEl.textContent = UGX(sum);
   }
 
   function clearIds(tr) {
@@ -160,7 +167,14 @@
 
     // remove row (client side)
     removeBtn.addEventListener('click', () => {
-      tr.remove();
+      const deleteCheck = tr.querySelector('.delete-check');
+      const isExisting = tr.getAttribute('data-existing') === '1';
+      if (isExisting && deleteCheck) {
+        deleteCheck.checked = true;
+        tr.style.display = 'none';
+      } else {
+        tr.remove();
+      }
       recalcGrand();
     });
 
@@ -169,6 +183,7 @@
   }
 
   linesBody.querySelectorAll('tr.inv-line').forEach(initRow);
+  recalcGrand();
 
   // --- add line ---
   addBtn.addEventListener('click', () => {
