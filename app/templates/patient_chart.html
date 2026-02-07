@@ -115,6 +115,7 @@
     <script>
       const DRUG_LOOKUP_URL = "{{ url_for('patients.api_lookup_drugs') }}";
       const PROC_LOOKUP_URL = "{{ url_for('patients.api_lookup_procedures') }}";
+      const PATIENT_ID = "{{ p.id }}";
     </script>
 
     <script>
@@ -208,7 +209,7 @@
                      required>
               <datalist id="procedure-suggestions"></datalist>
               <input type="hidden" id="procedure-id" name="proc_id" value="">
-              <div class="form-text">Tip: start typing (min 2 letters) to search the Cash price book.</div>
+              <div class="form-text">Tip: start typing (min 2 letters) to search the payer price book.</div>
             </div>
             <div class="col-md-4">
               <button class="btn btn-outline-primary btn-sm w-100">Add procedure</button>
@@ -272,7 +273,7 @@
           drugCache = {};
           return;
         }
-        const data = await fetchJSON(`${DRUG_LOOKUP_URL}?q=${encodeURIComponent(q)}`);
+        const data = await fetchJSON(`${DRUG_LOOKUP_URL}?q=${encodeURIComponent(q)}&patient_id=${encodeURIComponent(PATIENT_ID)}`);
         drugList.innerHTML = '';
         drugCache = {};
         data.forEach(it => {
@@ -291,7 +292,7 @@
           if(procIdInput) procIdInput.value = '';
           return;
         }
-        const data = await fetchJSON(`${PROC_LOOKUP_URL}?q=${encodeURIComponent(q)}`);
+        const data = await fetchJSON(`${PROC_LOOKUP_URL}?q=${encodeURIComponent(q)}&patient_id=${encodeURIComponent(PATIENT_ID)}`);
         procList.innerHTML = '';
         procCache = {};
         data.forEach(p => {

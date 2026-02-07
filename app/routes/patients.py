@@ -105,7 +105,11 @@ def api_lookup_drugs():
     if not q:
         return jsonify([])
 
+    patient_id = request.args.get("patient_id", type=int)
+    patient = Patient.query.get(patient_id) if patient_id else None
+    book = _resolve_price_book_for_patient(patient) if patient else None
     cash_pb = _cash_pricebook_id()
+    book_id = book.id if book else cash_pb
 
     def _fallback_inventory():
         rows = (
@@ -130,12 +134,12 @@ def api_lookup_drugs():
             })
         return jsonify(out)
 
-    # Prefer cash price book entries for drugs, BUT return Inventory Item.id
-    if cash_pb:
+    # Prefer matched price book entries for drugs, BUT return Inventory Item.id
+    if book_id:
         try:
             rows = (
                 PriceItem.query
-                .filter(PriceItem.pricebook_id == cash_pb)
+                .filter(PriceItem.pricebook_id == book_id)
                 # be tolerant: some DBs store 'Drug', 'DRUG', etc.
                 .filter(func.lower(PriceItem.item_type) == "drug")
                 .filter(PriceItem.item_name.ilike(f"%{q}%"))
@@ -146,7 +150,7 @@ def api_lookup_drugs():
         except Exception:
             rows = []
 
-        # If the cash price book exists but has no drug rows, fall back to inventory.
+        # If the price book exists but has no drug rows, fall back to inventory.
         if not rows:
             return _fallback_inventory()
 
@@ -187,28 +191,70 @@ def api_lookup_procedures():
         current_app.logger.warning("Lookup models not available (PriceItem/PriceBook/Payer).")
         return jsonify([])
 
+    if not Procedure:
+        current_app.logger.warning("Lookup models not available (Procedure).")
+        return jsonify([])
+
     q = (request.args.get("q") or "").strip()
     if not q:
         return jsonify([])
 
-    cash_pb = _cash_pricebook_id()
-    if not cash_pb:
-        return jsonify([])
+    patient_id = request.args.get("patient_id", type=int)
+    patient = Patient.query.get(patient_id) if patient_id else None
+    book = _resolve_price_book_for_patient(patient) if patient else None
+    book_id = book.id if book else _cash_pricebook_id()
 
-    rows = (
-        PriceItem.query
-        .filter(PriceItem.pricebook_id == cash_pb)
-        .filter(PriceItem.item_type == "procedure")
-        .filter(PriceItem.item_name.ilike(f"%{q}%"))
-        .order_by(PriceItem.item_name.asc())
-        .limit(20)
-        .all()
-    )
+    insurer = None
+    if patient and (patient.insurance_provider or "").strip().lower() not in ("", "cash"):
+        insurer = Insurer.query.filter(Insurer.name.ilike(patient.insurance_provider)).first()
 
-    return jsonify([
-        {"id": r.id, "name": r.item_name, "price": float(getattr(r, "sell_price", 0) or 0)}
-        for r in rows
-    ])
+    price_items = []
+    if book_id:
+        price_items = (
+            PriceItem.query
+            .filter(PriceItem.pricebook_id == book_id)
+            .filter(PriceItem.item_type == "procedure")
+            .filter(
+                or_(
+                    PriceItem.item_name.ilike(f"%{q}%"),
+                    PriceItem.item_code.ilike(f"%{q}%")
+                )
+            )
+            .order_by(PriceItem.item_name.asc())
+            .limit(50)
+            .all()
+        )
+
+    price_by_code = { (pi.item_code or "").strip(): pi for pi in price_items if pi.item_code }
+    price_by_name = { (pi.item_name or "").strip().lower(): pi for pi in price_items if pi.item_name }
+
+    results = []
+    if Procedure:
+        procs = (
+            Procedure.query
+            .filter(or_(Procedure.name.ilike(f"%{q}%"), Procedure.code.ilike(f"%{q}%")))
+            .limit(20)
+            .all()
+        )
+        for proc in procs:
+            unit_price = proc.default_price or 0
+            hit = None
+            if proc.code:
+                hit = price_by_code.get(proc.code.strip())
+            if not hit:
+                hit = price_by_name.get(proc.name.strip().lower())
+            if hit and getattr(hit, "sell_price", None) is not None:
+                unit_price = hit.sell_price
+            elif insurer and ProcedurePrice:
+                try:
+                    pp = ProcedurePrice.query.filter_by(procedure_id=proc.id, insurer_id=insurer.id).first()
+                    if pp and pp.price is not None:
+                        unit_price = pp.price
+                except Exception:
+                    pass
+            results.append({"id": proc.id, "name": proc.name, "price": float(unit_price or 0)})
+
+    return jsonify(results)
 
 
 @bp.get("/api/lookup/labs")
@@ -224,13 +270,16 @@ def api_lookup_labs():
     if not q:
         return jsonify([])
 
-    cash_pb = _cash_pricebook_id()
-    if not cash_pb:
+    patient_id = request.args.get("patient_id", type=int)
+    patient = Patient.query.get(patient_id) if patient_id else None
+    book = _resolve_price_book_for_patient(patient) if patient else None
+    book_id = book.id if book else _cash_pricebook_id()
+    if not book_id:
         return jsonify([])
 
     rows = (
         PriceItem.query
-        .filter(PriceItem.pricebook_id == cash_pb)
+        .filter(PriceItem.pricebook_id == book_id)
         .filter(PriceItem.item_type == "lab")
         .filter(PriceItem.item_name.ilike(f"%{q}%"))
         .order_by(PriceItem.item_name.asc())
@@ -496,8 +545,27 @@ def _resolve_price_book_for_patient(p: Patient):
     if not PriceBook:
         return None
 
+    def _normalize_payer_name(name: str) -> str:
+        if not name:
+            return ""
+        return name.strip().lower().replace("insurance", "").strip()
+
     ip_raw = (p.insurance_provider or "").strip()
-    if ip_raw:
+    ip_norm = _normalize_payer_name(ip_raw)
+    if ip_norm:
+        try:
+            if Payer is not None:
+                book = (
+                    db.session.query(PriceBook)
+                    .join(Payer, PriceBook.payer_id == Payer.id)
+                    .filter(func.lower(func.trim(Payer.name)) == ip_norm)
+                    .order_by(PriceBook.effective_date.desc().nullslast(), PriceBook.id.desc())
+                    .first()
+                )
+                if book:
+                    return book
+        except Exception:
+            pass
         try:
             if hasattr(PriceBook, "insurer_id"):
                 ins = Insurer.query.filter(Insurer.name.ilike(ip_raw)).first()
@@ -1409,12 +1477,28 @@ def visit_add_procedure(visit_id):
         db.session.add(inv)
         db.session.flush()  # ensures inv.id
 
-    # Determine price: insurer price if insurance_provider maps to Insurer, else default_price
+    # Determine price: prefer matched PriceBook entry, then insurer-specific, else default_price.
     unit_price = proc.default_price or 0
     insurer_amount = 0
     patient_amount = unit_price
 
-    if inv.payer_type == "Insurance":
+    pricebook_hit = None
+    try:
+        book = _resolve_price_book_for_patient(v.patient) if v.patient else None
+        if book and PriceItem is not None:
+            pq = PriceItem.query.filter_by(pricebook_id=book.id)
+            if hasattr(PriceItem, "item_type"):
+                pq = pq.filter(PriceItem.item_type == "procedure")
+            if getattr(proc, "code", None):
+                pricebook_hit = pq.filter(PriceItem.item_code == proc.code).first()
+            if not pricebook_hit:
+                pricebook_hit = pq.filter(PriceItem.item_name.ilike(proc.name)).first()
+            if pricebook_hit and getattr(pricebook_hit, "sell_price", None) is not None:
+                unit_price = pricebook_hit.sell_price
+    except Exception:
+        pricebook_hit = None
+
+    if inv.payer_type == "Insurance" and not pricebook_hit:
         insurer_name = (v.patient.insurance_provider or "").strip() if v.patient else ""
         if insurer_name:
             insurer = Insurer.query.filter(Insurer.name.ilike(insurer_name)).first()
@@ -1422,6 +1506,8 @@ def visit_add_procedure(visit_id):
                 pp = ProcedurePrice.query.filter_by(procedure_id=proc.id, insurer_id=insurer.id).first() if ProcedurePrice else None
                 if pp and pp.price is not None:
                     unit_price = pp.price
+
+    if inv.payer_type == "Insurance":
         insurer_amount = unit_price
         patient_amount = 0
 
