@@ -211,6 +211,56 @@ def api_lookup_procedures():
     ])
 
 
+@bp.get("/api/lookup/labs")
+def api_lookup_labs():
+    if not current_user.is_authenticated:
+        return jsonify([])
+
+    if PriceItem is None or PriceBook is None or Payer is None:
+        current_app.logger.warning("Lookup models not available (PriceItem/PriceBook/Payer).")
+        return jsonify([])
+
+    q = (request.args.get("q") or "").strip()
+    if not q:
+        return jsonify([])
+
+    cash_pb = _cash_pricebook_id()
+    if not cash_pb:
+        return jsonify([])
+
+    rows = (
+        PriceItem.query
+        .filter(PriceItem.pricebook_id == cash_pb)
+        .filter(PriceItem.item_type == "lab")
+        .filter(PriceItem.item_name.ilike(f"%{q}%"))
+        .order_by(PriceItem.item_name.asc())
+        .limit(20)
+        .all()
+    )
+
+    out = []
+    for r in rows:
+        proc_id = ""
+        if Procedure:
+            try:
+                proc = (
+                    Procedure.query
+                    .filter(Procedure.name.ilike(r.item_name))
+                    .filter(Procedure.category.ilike("lab"))
+                    .first()
+                )
+                proc_id = proc.id if proc else ""
+            except Exception:
+                proc_id = ""
+        out.append({
+            "id": proc_id,
+            "name": r.item_name,
+            "price": float(getattr(r, "sell_price", 0) or 0),
+        })
+
+    return jsonify(out)
+
+
 def _cash_pricebook_id():
     """
     Select a 'cash/self' price book if your Payer name includes cash/self.

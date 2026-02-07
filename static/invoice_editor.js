@@ -3,6 +3,9 @@
   if (!form) return;
 
   const patientId = form.getAttribute('data-patient-id');
+  const drugLookupUrl = form.getAttribute('data-drug-lookup-url');
+  const procLookupUrl = form.getAttribute('data-proc-lookup-url');
+  const labLookupUrl = form.getAttribute('data-lab-lookup-url');
   const linesBody = document.getElementById('lines-body');
   const tmpl = document.getElementById('line-template');
   const addBtn = document.getElementById('add-line');
@@ -69,12 +72,59 @@
     let t; return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); };
   };
 
+  async function fetchJSON(url) {
+    const res = await fetch(url, { credentials: 'same-origin' });
+    if (!res.ok) return [];
+    const ct = (res.headers.get('content-type') || '').toLowerCase();
+    if (!ct.includes('application/json')) return [];
+    return await res.json();
+  }
+
   async function runSearch(q) {
     const params = new URLSearchParams({ q });
     if (patientId) params.set('patient_id', patientId);
-    const res = await fetch(`/api/search/catalog?${params.toString()}`, { credentials: 'same-origin' });
-    if (!res.ok) return [];
-    return await res.json();
+    const drugPromise = drugLookupUrl
+      ? fetchJSON(`${drugLookupUrl}?${params.toString()}`)
+      : Promise.resolve([]);
+    const procPromise = procLookupUrl
+      ? fetchJSON(`${procLookupUrl}?${params.toString()}`)
+      : Promise.resolve([]);
+    const labPromise = labLookupUrl
+      ? fetchJSON(`${labLookupUrl}?${params.toString()}`)
+      : Promise.resolve([]);
+
+    const [drugs, procs, labs] = await Promise.all([drugPromise, procPromise, labPromise]);
+    const results = [];
+    drugs.forEach((d) => {
+      results.push({
+        kind: 'drug',
+        category: 'drug',
+        ref_id: d.id,
+        text: `${d.name} (UGX ${Number(d.price || 0).toFixed(0)})`,
+        price: d.price || 0
+      });
+    });
+    procs.forEach((p) => {
+      results.push({
+        kind: 'procedure',
+        category: 'procedure',
+        ref_id: p.id,
+        text: `${p.name} (UGX ${Number(p.price || 0).toFixed(0)})`,
+        price: p.price || 0
+      });
+    });
+    labs.forEach((l) => {
+      const refId = l.id || '';
+      results.push({
+        kind: refId ? 'procedure' : 'other',
+        category: 'lab',
+        ref_id: refId,
+        text: `${l.name} (UGX ${Number(l.price || 0).toFixed(0)})`,
+        price: l.price || 0
+      });
+    });
+
+    return results;
   }
 
   const debouncedSearch = debounce(async (input) => {
