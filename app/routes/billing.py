@@ -39,9 +39,9 @@ except Exception:
     LabOrder = None
 
 try:
-    from ..models import PriceBook, PriceItem
+    from ..models import PriceBook, PriceItem, Payer
 except Exception:
-    PriceBook = PriceItem = None
+    PriceBook = PriceItem = Payer = None
 
 
 # ------------------------------------------------------------------------------
@@ -398,8 +398,27 @@ def _resolve_price_book_for_patient(patient: Patient):
     if not (PriceBook and patient):
         return None
 
+    def _normalize_payer_name(name: str) -> str:
+        if not name:
+            return ""
+        return name.strip().lower().replace("insurance", "").strip()
+
     ip_raw = (getattr(patient, "insurance_provider", "") or "").strip()
-    if ip_raw:
+    ip_norm = _normalize_payer_name(ip_raw)
+    if ip_norm:
+        try:
+            if Payer is not None:
+                book = (
+                    db.session.query(PriceBook)
+                    .join(Payer, PriceBook.payer_id == Payer.id)
+                    .filter(func.lower(func.trim(Payer.name)) == ip_norm)
+                    .order_by(PriceBook.effective_date.desc().nullslast(), PriceBook.id.desc())
+                    .first()
+                )
+                if book:
+                    return book
+        except Exception:
+            pass
         try:
             if hasattr(PriceBook, "insurer_id") and Insurer:
                 ins = Insurer.query.filter(Insurer.name.ilike(ip_raw)).first()
@@ -476,6 +495,8 @@ def api_search_catalog():
     q = (request.args.get("q") or "").strip()
     patient_id = request.args.get("patient_id", type=int)
     insurer = _get_patient_insurer(patient_id) if patient_id else None
+    patient = Patient.query.get(patient_id) if patient_id else None
+    book = _resolve_price_book_for_patient(patient) if patient else None
     results = []
     seen = set()
     if not q:
@@ -486,7 +507,21 @@ def api_search_catalog():
     for p_ in procs:
         seen.add((p_.name or "").strip().lower())
         price = Decimal(getattr(p_, "default_price", 0) or 0)
-        if insurer and ProcedurePrice:
+        pricebook_hit = None
+        if book and PriceItem:
+            try:
+                pq = PriceItem.query.filter_by(pricebook_id=book.id)
+                if hasattr(PriceItem, "item_type"):
+                    pq = pq.filter(PriceItem.item_type == "procedure")
+                if getattr(p_, "code", None):
+                    pricebook_hit = pq.filter(PriceItem.item_code == p_.code).first()
+                if not pricebook_hit:
+                    pricebook_hit = pq.filter(PriceItem.item_name.ilike(p_.name)).first()
+                if pricebook_hit and getattr(pricebook_hit, "sell_price", None) is not None:
+                    price = Decimal(pricebook_hit.sell_price or 0)
+            except Exception:
+                pricebook_hit = None
+        if not pricebook_hit and insurer and ProcedurePrice:
             try:
                 pp = ProcedurePrice.query.filter_by(procedure_id=p_.id, insurer_id=insurer.id).first()
                 if pp:
@@ -506,7 +541,21 @@ def api_search_catalog():
     items = Item.query.filter(Item.name.ilike(f"%{q}%")).limit(10).all()
     for d in items:
         price = Decimal(getattr(d, "sell_price", 0) or 0)
-        if insurer and ItemPrice:
+        pricebook_hit = None
+        if book and PriceItem:
+            try:
+                pq = PriceItem.query.filter_by(pricebook_id=book.id)
+                if hasattr(PriceItem, "item_type"):
+                    pq = pq.filter(PriceItem.item_type == "drug")
+                if getattr(d, "sku", None):
+                    pricebook_hit = pq.filter(PriceItem.item_code == d.sku).first()
+                if not pricebook_hit:
+                    pricebook_hit = pq.filter(PriceItem.item_name.ilike(d.name)).first()
+                if pricebook_hit and getattr(pricebook_hit, "sell_price", None) is not None:
+                    price = Decimal(pricebook_hit.sell_price or 0)
+            except Exception:
+                pricebook_hit = None
+        if not pricebook_hit and insurer and ItemPrice:
             try:
                 ip = ItemPrice.query.filter_by(item_id=d.id, insurer_id=insurer.id).first()
                 if ip:
