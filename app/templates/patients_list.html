@@ -101,7 +101,7 @@
                   <button class="btn btn-sm btn-outline-primary">Send to Triage</button>
                 </form>
 
-                {% if can_send_to_pharmacy %}
+                {% if can_send_to_pharmacy and 'pharmacy.pharmacy_dashboard' in current_app.view_functions %}
                   <a class="btn btn-sm btn-outline-success"
                      href="{{ url_for('pharmacy.pharmacy_dashboard', patient_id=p.id) }}">
                     Send to Pharmacy
