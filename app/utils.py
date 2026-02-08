@@ -99,3 +99,10 @@ def landing_endpoint_for(user) -> str | None:
 
     # No match -> default
     return _DEFAULT_LANDING
+
+
+def has_endpoint(endpoint: str) -> bool:
+    try:
+        return endpoint in current_app.view_functions
+    except Exception:
+        return False

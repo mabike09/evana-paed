@@ -4,7 +4,7 @@ import os
 from datetime import timedelta
 from flask import Flask
 from .extensions import db, migrate, login_manager, csrf
-from .utils import within_24h
+    from .utils import within_24h, has_endpoint
 from config import Config
 
 
@@ -88,12 +88,18 @@ def create_app():
     # -------------------------
     # Jinja globals
     # -------------------------
-    app.jinja_env.globals.update(within_24h=within_24h, enumerate=enumerate, zip=zip, len=len)
+    app.jinja_env.globals.update(
+        within_24h=within_24h,
+        has_endpoint=has_endpoint,
+        enumerate=enumerate,
+        zip=zip,
+        len=len,
+    )
 
     # -------------------------
     # Blueprints
     # -------------------------
-    from .routes import auth, home, patients, queue, billing, lab, files, inventory, reports, prices
+    from .routes import auth, home, patients, queue, billing, lab, files, inventory, reports, prices, pharmacy
     app.register_blueprint(home.bp)
     app.register_blueprint(auth.bp)
     app.register_blueprint(patients.bp)
@@ -104,6 +110,7 @@ def create_app():
     app.register_blueprint(inventory.bp)
     app.register_blueprint(reports.bp)
     app.register_blueprint(prices.bp)
+    app.register_blueprint(pharmacy.bp)
 
     # -------------------------
     # Invoice editability helper
