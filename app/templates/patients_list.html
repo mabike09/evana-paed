@@ -52,6 +52,7 @@
   <a class="btn btn-sm btn-success me-2" href="{{ url_for('patients.patients_new') }}">Register new</a>
 
   {% set can_manage = current_user.role in ['reception','nurse','admin'] %}
+  {% set can_send_to_pharmacy = current_user.role in ['nurse','admin'] %}
   {% if can_manage %}
     <a class="btn btn-sm btn-outline-dark" href="{{ url_for('patients.triage_queue') }}">Triage Queue</a>
   {% endif %}
@@ -99,6 +100,13 @@
                   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                   <button class="btn btn-sm btn-outline-primary">Send to Triage</button>
                 </form>
+
+                {% if can_send_to_pharmacy and 'pharmacy.pharmacy_dashboard' in current_app.view_functions %}
+                  <a class="btn btn-sm btn-outline-success"
+                     href="{{ url_for('pharmacy.pharmacy_dashboard', patient_id=p.id) }}">
+                    Send to Pharmacy
+                  </a>
+                {% endif %}
 
                 <a class="btn btn-sm btn-outline-secondary"
                    href="{{ url_for('billing.patient_billing', patient_id=p.id) }}">
