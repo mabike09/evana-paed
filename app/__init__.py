@@ -4,7 +4,7 @@ import os
 from datetime import timedelta
 from flask import Flask
 from .extensions import db, migrate, login_manager, csrf
-from .utils import within_24h
+    from .utils import within_24h, has_endpoint
 from config import Config
 
 
@@ -88,7 +88,13 @@ def create_app():
     # -------------------------
     # Jinja globals
     # -------------------------
-    app.jinja_env.globals.update(within_24h=within_24h, enumerate=enumerate, zip=zip, len=len)
+    app.jinja_env.globals.update(
+        within_24h=within_24h,
+        has_endpoint=has_endpoint,
+        enumerate=enumerate,
+        zip=zip,
+        len=len,
+    )
 
     # -------------------------
     # Blueprints
