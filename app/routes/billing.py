@@ -108,6 +108,11 @@ def add_invoice(patient_id):
 def add_payment(patient_id, invoice_id):
     """Record a payment. If the invoice becomes fully paid, release any lab orders waiting for payment."""
     inv = Invoice.query.filter_by(id=invoice_id, patient_id=patient_id).first_or_404()
+    patient = Patient.query.get(patient_id)
+    payer_type = (getattr(inv, "payer_type", None) or "").strip()
+    if not payer_type:
+        ip = (getattr(patient, "insurance_provider", "") or "").strip().lower() if patient else ""
+        payer_type = "Insurance" if (ip and ip != "cash") else "Cash"
 
     raw_amount = (request.form.get("amount") or "").strip()
     method = (request.form.get("method") or "Cash").strip()
@@ -226,6 +231,23 @@ def add_payment(patient_id, invoice_id):
                         db.session.add(bq)
                 except Exception:
                     current_app.logger.exception("Failed ensuring LAB BillingQueue entry")
+
+                if str(payer_type).lower() == "cash" and released:
+                    try:
+                        close_q = BillingQueue.query.filter_by(status="Open")
+                        if hasattr(BillingQueue, "kind"):
+                            close_q = close_q.filter(BillingQueue.kind == "BILLING")
+                        if visit_id:
+                            close_q = close_q.filter(BillingQueue.visit_id == visit_id)
+                        else:
+                            close_q = close_q.filter(BillingQueue.patient_id == patient_id)
+                        for entry in close_q.all():
+                            try:
+                                db.session.delete(entry)
+                            except Exception:
+                                entry.status = "Closed"
+                    except Exception:
+                        current_app.logger.exception("Failed closing BillingQueue entry after cash lab payment")
 
                 db.session.commit()
 
