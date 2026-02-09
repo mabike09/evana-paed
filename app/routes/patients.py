@@ -832,12 +832,10 @@ def patients_list():
         ))
     patients = query.order_by(Patient.id.desc()).limit(300).all()
 
-    open_q = (
-        BillingQueue.query
-        .filter_by(status="Open")
-        .order_by(BillingQueue.added_at.asc())
-        .all()
-    )
+    open_q_query = BillingQueue.query.filter_by(status="Open")
+    if hasattr(BillingQueue, "kind"):
+        open_q_query = open_q_query.filter(BillingQueue.kind == "BILLING")
+    open_q = open_q_query.order_by(BillingQueue.added_at.asc()).all()
 
     return render_template(
         "patients_list.html",
@@ -1357,6 +1355,17 @@ def visit_close_and_bill(visit_id):
                 break
     except Exception:
         has_drugs = False
+    has_procedures = False
+    try:
+        for l in getattr(inv, "lines", []):
+            if (getattr(l, "kind", "") or "").lower() == "procedure":
+                has_procedures = True
+                break
+            if getattr(l, "procedure_id", None) or getattr(l, "price_item_id", None):
+                has_procedures = True
+                break
+    except Exception:
+        has_procedures = False
 
     # Close any open queue entries that should no longer be active
     try:
@@ -1368,15 +1377,15 @@ def visit_close_and_bill(visit_id):
         pass
 
 
-    q = BillingQueue()
-    if hasattr(q, "patient_id"): q.patient_id = v.patient_id
-    if hasattr(q, "visit_id"): q.visit_id = v.id
-    if hasattr(q, "status"): q.status = "Open"
-    if hasattr(q, "added_at"): q.added_at = datetime.utcnow()
-    if hasattr(q, "kind"): q.kind = "PHARMACY" if has_drugs else "BILLING"
-    if hasattr(q, "description"):
-        q.description = "Doctor closed: to Pharmacy" if has_drugs else "Doctor closed: to Billing"
-    db.session.add(q)
+    note = None
+    if has_drugs and has_procedures:
+        note = "Visit closed: drugs and procedures billed"
+    elif has_drugs:
+        note = "Visit closed: drugs billed"
+    elif has_procedures:
+        note = "Visit closed: procedures billed"
+    if note:
+        _enqueue_billing(v.patient_id, v.id, note=note)
 
     _safe_setattr(v, "closed_at", datetime.utcnow())
     _safe_setattr(v, "status", "Closed")
@@ -1529,6 +1538,8 @@ def visit_add_procedure(visit_id):
 
     # Update invoice amount
     inv.amount = (inv.amount or 0) + line_total
+
+    _enqueue_billing(v.patient_id, v.id, note=f"Procedure added: {proc.name}")
 
     try:
         db.session.commit()
@@ -1747,6 +1758,8 @@ def visit_add_drugs_bulk(visit_id):
         inv.amount = sum((l.line_total or Decimal("0")) for l in getattr(inv, "lines", []))
     except Exception:
         pass
+
+    _enqueue_billing(p.id, v.id, note="Drugs added")
 
     db.session.commit()
     flash("Drugs added to visit.", "success")
