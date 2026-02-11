@@ -21,6 +21,7 @@ def normalize_payer_name(name: str) -> str:
     n = (name or "").strip().lower().replace("insurance", "").strip()
     mapping = {
         "aar": "AAR",
+        "apa": "APA",
         "ga": "GA",
         "icea": "ICEA",
         "prudential": "Prudential",
