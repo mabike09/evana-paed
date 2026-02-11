@@ -4,7 +4,7 @@ import os
 from datetime import timedelta
 from flask import Flask
 from .extensions import db, migrate, login_manager, csrf
-    from .utils import within_24h, has_endpoint
+from .utils import within_24h, has_endpoint
 from config import Config
 
 
@@ -142,3 +142,4 @@ def create_app():
         app._insurers_seeded = True  # type: ignore[attr-defined]
 
     return app
+
