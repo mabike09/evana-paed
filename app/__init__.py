@@ -129,7 +129,7 @@ def create_app():
         if getattr(app, "_insurers_seeded", False):
             return
         try:
-            want = ["AAR", "GA", "Prudential", "Sanlam", "ICEA", "Case"]
+            want = ["AAR", "APA", "GA", "Prudential", "Sanlam", "ICEA", "Case"]
             existing = {i.name for i in Insurer.query.all()}
             missing = [n for n in want if n not in existing]
             for name in missing:

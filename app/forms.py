@@ -21,6 +21,7 @@ PAYMENT_METHODS = [
 INSURANCE_CHOICES = [
     ("Cash", "Cash"),
     ("AAR", "AAR"),
+    ("APA", "APA"),
     ("GA", "GA"),
     ("Medicard", "Medicard"),
     ("Prudential", "Prudential"),
@@ -48,6 +49,7 @@ class UserForm(FlaskForm):
 INSURANCE_CHOICES = [
     ("Cash", "Cash"),
     ("AAR", "AAR"),
+    ("APA", "APA"),
     ("GA", "GA"),
     ("Medicard", "Medicard"),
     ("Prudential", "Prudential"),
