@@ -15,6 +15,7 @@ bp = Blueprint("prices", __name__, url_prefix="/prices")
 DEFAULT_PAYERS = [
     {"name": "Cash", "payer_type": "cash"},
     {"name": "AAR", "payer_type": "insurance"},
+    {"name": "APA", "payer_type": "insurance"},
     {"name": "GA", "payer_type": "insurance"},
     {"name": "ICEA", "payer_type": "insurance"},
     {"name": "Prudential", "payer_type": "insurance"},
@@ -24,7 +25,7 @@ DEFAULT_PAYERS = [
 ]
 
 def ensure_default_payers():
-    """Idempotently seed our standard Cash + 7 insurers."""
+    """Idempotently seed our standard Cash + 8 insurers."""
     for p in DEFAULT_PAYERS:
         _get_or_create(Payer, name=p["name"], defaults={"payer_type": p["payer_type"]})
     db.session.flush()
@@ -41,6 +42,7 @@ def normalize_payer_name(name: str) -> str:
     # Title-case but preserve known acronyms
     mapping = {
         "aar": "AAR",
+        "apa": "APA",
         "ga": "GA",
         "icea": "ICEA",
         "prudential": "Prudential",
@@ -82,7 +84,7 @@ def upload_price_form():
     ensure_default_payers()
     """
     Render the redesigned upload page with:
-    - Payer dropdown (Cash + 7 insurers)
+    - Payer dropdown (Cash + 8 insurers)
     - Dependent PriceBook dropdown filtered by payer
     - Option to create a new PriceBook
     Also seeds the default payers if they don't exist yet.
@@ -102,19 +104,7 @@ def upload_price_form():
         )
 
     # ---- Seed the required payers (idempotent) ----
-    DEFAULT_PAYERS = [
-        {"name": "Cash", "payer_type": "cash"},
-        {"name": "AAR", "payer_type": "insurance"},
-        {"name": "GA", "payer_type": "insurance"},
-        {"name": "ICEA", "payer_type": "insurance"},
-        {"name": "Prudential", "payer_type": "insurance"},
-        {"name": "Sanlam", "payer_type": "insurance"},
-        {"name": "Medicard", "payer_type": "insurance"},
-        {"name": "Case", "payer_type": "insurance"},
-    ]
-    for p in DEFAULT_PAYERS:
-        _get_or_create(Payer, name=p["name"], defaults={"payer_type": p["payer_type"]})
-    db.session.flush()
+    ensure_default_payers()
 
     # Build dropdown data
     payers = (

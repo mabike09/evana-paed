@@ -21,6 +21,7 @@ PAYMENT_METHODS = [
 INSURANCE_CHOICES = [
     ("Cash", "Cash"),
     ("AAR", "AAR"),
+    ("APA", "APA"),
     ("GA", "GA"),
     ("Medicard", "Medicard"),
     ("Prudential", "Prudential"),
@@ -44,17 +45,6 @@ class UserForm(FlaskForm):
 
 
 
-
-INSURANCE_CHOICES = [
-    ("Cash", "Cash"),
-    ("AAR", "AAR"),
-    ("GA", "GA"),
-    ("Medicard", "Medicard"),
-    ("Prudential", "Prudential"),
-    ("Sanlam", "Sanlam"),
-    ("ICEA", "ICEA"),
-    ("Case", "Case"),
-]
 
 class PatientForm(FlaskForm):
     first_name = StringField("First Name", validators=[DataRequired(), Length(max=80)])

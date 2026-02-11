@@ -4,7 +4,7 @@ import os
 from datetime import timedelta
 from flask import Flask
 from .extensions import db, migrate, login_manager, csrf
-    from .utils import within_24h, has_endpoint
+from .utils import within_24h, has_endpoint
 from config import Config
 
 
@@ -129,7 +129,7 @@ def create_app():
         if getattr(app, "_insurers_seeded", False):
             return
         try:
-            want = ["AAR", "GA", "Prudential", "Sanlam", "ICEA", "Case"]
+            want = ["AAR", "APA", "GA", "Prudential", "Sanlam", "ICEA", "Medicard", "Case"]
             existing = {i.name for i in Insurer.query.all()}
             missing = [n for n in want if n not in existing]
             for name in missing:
