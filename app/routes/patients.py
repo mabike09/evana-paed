@@ -213,7 +213,8 @@ def api_lookup_procedures():
         price_items = (
             PriceItem.query
             .filter(PriceItem.pricebook_id == book_id)
-            .filter(PriceItem.item_type == "procedure")
+            # tolerate legacy/csv values like "Procedure" or "PROCEDURE"
+            .filter(func.lower(PriceItem.item_type) == "procedure")
             .filter(
                 or_(
                     PriceItem.item_name.ilike(f"%{q}%"),
@@ -280,7 +281,8 @@ def api_lookup_labs():
     rows = (
         PriceItem.query
         .filter(PriceItem.pricebook_id == book_id)
-        .filter(PriceItem.item_type == "lab")
+        # tolerate legacy/csv values like "Lab" or "LAB"
+        .filter(func.lower(PriceItem.item_type) == "lab")
         .filter(PriceItem.item_name.ilike(f"%{q}%"))
         .order_by(PriceItem.item_name.asc())
         .limit(20)
