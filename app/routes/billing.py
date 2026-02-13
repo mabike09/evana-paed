@@ -488,7 +488,7 @@ def _lab_items_from_book(book, query: str):
     try:
         q = PriceItem.query.filter_by(pricebook_id=book.id)
         if hasattr(PriceItem, "item_type"):
-            q = q.filter(PriceItem.item_type == "lab")
+            q = q.filter(func.lower(func.trim(func.coalesce(PriceItem.item_type, ""))) == "lab")
         if query:
             if hasattr(PriceItem, "item_name"):
                 q = q.filter(PriceItem.item_name.ilike(f"%{query}%"))
@@ -534,7 +534,7 @@ def api_search_catalog():
             try:
                 pq = PriceItem.query.filter_by(pricebook_id=book.id)
                 if hasattr(PriceItem, "item_type"):
-                    pq = pq.filter(PriceItem.item_type == "procedure")
+                    pq = pq.filter(func.lower(func.trim(func.coalesce(PriceItem.item_type, ""))) == "procedure")
                 if getattr(p_, "code", None):
                     pricebook_hit = pq.filter(PriceItem.item_code == p_.code).first()
                 if not pricebook_hit:
@@ -568,7 +568,7 @@ def api_search_catalog():
             try:
                 pq = PriceItem.query.filter_by(pricebook_id=book.id)
                 if hasattr(PriceItem, "item_type"):
-                    pq = pq.filter(PriceItem.item_type == "drug")
+                    pq = pq.filter(func.lower(func.trim(func.coalesce(PriceItem.item_type, ""))) == "drug")
                 if getattr(d, "sku", None):
                     pricebook_hit = pq.filter(PriceItem.item_code == d.sku).first()
                 if not pricebook_hit:
