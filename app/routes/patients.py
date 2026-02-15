@@ -191,10 +191,6 @@ def api_lookup_procedures():
         current_app.logger.warning("Lookup models not available (PriceItem/PriceBook/Payer).")
         return jsonify([])
 
-    if not Procedure:
-        current_app.logger.warning("Lookup models not available (Procedure).")
-        return jsonify([])
-
     q = (request.args.get("q") or "").strip()
     if not q:
         return jsonify([])
@@ -213,7 +209,6 @@ def api_lookup_procedures():
         price_items = (
             PriceItem.query
             .filter(PriceItem.pricebook_id == book_id)
-            # tolerate legacy/csv values like "Procedure" or "PROCEDURE"
             .filter(func.lower(func.trim(func.coalesce(PriceItem.item_type, ""))) == "procedure")
             .filter(
                 or_(
@@ -226,15 +221,17 @@ def api_lookup_procedures():
             .all()
         )
 
-    price_by_code = { (pi.item_code or "").strip(): pi for pi in price_items if pi.item_code }
-    price_by_name = { (pi.item_name or "").strip().lower(): pi for pi in price_items if pi.item_name }
+    price_by_code = {(pi.item_code or "").strip(): pi for pi in price_items if pi.item_code}
+    price_by_name = {(pi.item_name or "").strip().lower(): pi for pi in price_items if pi.item_name}
 
     results = []
+    seen_proc_ids = set()
+
     if Procedure:
         procs = (
             Procedure.query
             .filter(or_(Procedure.name.ilike(f"%{q}%"), Procedure.code.ilike(f"%{q}%")))
-            .limit(20)
+            .limit(30)
             .all()
         )
         for proc in procs:
@@ -243,7 +240,7 @@ def api_lookup_procedures():
             if proc.code:
                 hit = price_by_code.get(proc.code.strip())
             if not hit:
-                hit = price_by_name.get(proc.name.strip().lower())
+                hit = price_by_name.get((proc.name or "").strip().lower())
             if hit and getattr(hit, "sell_price", None) is not None:
                 unit_price = hit.sell_price
             elif insurer and ProcedurePrice:
@@ -253,7 +250,37 @@ def api_lookup_procedures():
                         unit_price = pp.price
                 except Exception:
                     pass
+            seen_proc_ids.add(proc.id)
             results.append({"id": proc.id, "name": proc.name, "price": float(unit_price or 0)})
+
+    # Fallback for setups where pricebook has procedure rows not present in Procedure catalog.
+    for pi in price_items:
+        proc = None
+        if Procedure:
+            try:
+                code = (getattr(pi, "item_code", None) or "").strip()
+                name = (getattr(pi, "item_name", None) or "").strip()
+                if code:
+                    proc = Procedure.query.filter(func.lower(func.trim(func.coalesce(Procedure.code, ""))) == code.lower()).first()
+                if not proc and name:
+                    proc = Procedure.query.filter(func.lower(func.trim(func.coalesce(Procedure.name, ""))) == name.lower()).first()
+            except Exception:
+                proc = None
+
+        if proc and proc.id not in seen_proc_ids:
+            seen_proc_ids.add(proc.id)
+            results.append({
+                "id": proc.id,
+                "name": proc.name,
+                "price": float(getattr(pi, "sell_price", 0) or 0),
+            })
+        elif not proc:
+            # keep suggestion visible even if catalog link is missing; backend can still bill by name
+            results.append({
+                "id": "",
+                "name": (getattr(pi, "item_name", None) or getattr(pi, "item_code", None) or "Procedure"),
+                "price": float(getattr(pi, "sell_price", 0) or 0),
+            })
 
     return jsonify(results)
 
@@ -1462,15 +1489,26 @@ def visit_add_procedure(visit_id):
     v = Visit.query.get_or_404(visit_id)
 
     proc_id = request.form.get("proc_id", type=int)
-    if not proc_id:
-        flash("Please select a procedure.", "warning")
-        return redirect(url_for("patients.patient_chart", patient_id=v.patient_id))
-    
-    if not Procedure or not InvoiceLine:
+    proc_name = (request.form.get("procedure_name") or "").strip()
+
+    if not InvoiceLine:
         flash("Procedure billing is not enabled (missing models).", "danger")
         return redirect(url_for("patients.patient_chart", patient_id=v.patient_id))
-    
-    proc = Procedure.query.get_or_404(proc_id)
+
+    proc = None
+    if Procedure and proc_id:
+        proc = Procedure.query.get(proc_id)
+
+    if not proc and Procedure and proc_name:
+        proc = (
+            Procedure.query
+            .filter(or_(Procedure.name.ilike(proc_name), Procedure.code.ilike(proc_name)))
+            .first()
+        )
+
+    if not proc and not proc_name:
+        flash("Please enter or select a procedure.", "warning")
+        return redirect(url_for("patients.patient_chart", patient_id=v.patient_id))
 
     # Ensure invoice exists for this visit
     inv = Invoice.query.filter_by(visit_id=v.id).order_by(Invoice.id.desc()).first()
@@ -1488,8 +1526,8 @@ def visit_add_procedure(visit_id):
         db.session.add(inv)
         db.session.flush()  # ensures inv.id
 
-    # Determine price: prefer matched PriceBook entry, then insurer-specific, else default_price.
-    unit_price = proc.default_price or 0
+    # Determine price: prefer matched PriceBook entry, then insurer-specific, else catalog default (if linked).
+    unit_price = (proc.default_price or 0) if proc else 0
     insurer_amount = 0
     patient_amount = unit_price
 
@@ -1499,17 +1537,21 @@ def visit_add_procedure(visit_id):
         if book and PriceItem is not None:
             pq = PriceItem.query.filter_by(pricebook_id=book.id)
             if hasattr(PriceItem, "item_type"):
-                pq = pq.filter(PriceItem.item_type == "procedure")
-            if getattr(proc, "code", None):
-                pricebook_hit = pq.filter(PriceItem.item_code == proc.code).first()
-            if not pricebook_hit:
-                pricebook_hit = pq.filter(PriceItem.item_name.ilike(proc.name)).first()
+                pq = pq.filter(func.lower(func.trim(func.coalesce(PriceItem.item_type, ""))) == "procedure")
+            if proc and getattr(proc, "code", None):
+                pricebook_hit = pq.filter(func.lower(func.trim(func.coalesce(PriceItem.item_code, ""))) == proc.code.strip().lower()).first()
+            if not pricebook_hit and proc:
+                pricebook_hit = pq.filter(func.lower(func.trim(func.coalesce(PriceItem.item_name, ""))) == proc.name.strip().lower()).first()
+            if not pricebook_hit and proc_name:
+                pricebook_hit = pq.filter(func.lower(func.trim(func.coalesce(PriceItem.item_name, ""))) == proc_name.lower()).first()
+            if not pricebook_hit and proc_name:
+                pricebook_hit = pq.filter(PriceItem.item_name.ilike(f"%{proc_name}%")).first()
             if pricebook_hit and getattr(pricebook_hit, "sell_price", None) is not None:
                 unit_price = pricebook_hit.sell_price
     except Exception:
         pricebook_hit = None
 
-    if inv.payer_type == "Insurance" and not pricebook_hit:
+    if inv.payer_type == "Insurance" and not pricebook_hit and proc:
         insurer_name = (v.patient.insurance_provider or "").strip() if v.patient else ""
         if insurer_name:
             insurer = Insurer.query.filter(Insurer.name.ilike(insurer_name)).first()
@@ -1525,11 +1567,13 @@ def visit_add_procedure(visit_id):
     qty = 1
     line_total = (unit_price or 0) * qty
 
+    description = proc.name if proc else proc_name
+
     line = InvoiceLine(
         invoice_id=inv.id,
         kind="procedure",
-        procedure_id=proc.id,
-        description=proc.name,
+        procedure_id=proc.id if proc else None,
+        description=description,
         qty=qty,
         unit_price=unit_price,
         line_total=line_total,
@@ -1541,7 +1585,7 @@ def visit_add_procedure(visit_id):
     # Update invoice amount
     inv.amount = (inv.amount or 0) + line_total
 
-    _enqueue_billing(v.patient_id, v.id, note=f"Procedure added: {proc.name}")
+    _enqueue_billing(v.patient_id, v.id, note=f"Procedure added: {description}")
 
     try:
         db.session.commit()

@@ -105,10 +105,11 @@
       });
     });
     procs.forEach((p) => {
+      const refId = p.id || '';
       results.push({
-        kind: 'procedure',
+        kind: refId ? 'procedure' : 'other',
         category: 'procedure',
-        ref_id: p.id,
+        ref_id: refId,
         text: `${p.name} (UGX ${Number(p.price || 0).toFixed(0)})`,
         price: p.price || 0
       });

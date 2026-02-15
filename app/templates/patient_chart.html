@@ -335,16 +335,19 @@
         }
       });
 
-      // Before procedure submit, ensure proc_id exists
+      // Before procedure submit, sync hidden id where available.
+      // Some installations keep procedures only in price books (no Procedure catalog row),
+      // so we allow submit by name even when proc_id is blank.
       if(procInput && procIdInput){
         const form = procInput.closest('form');
         if(form){
           form.addEventListener('submit', function(ev){
-            const hit = procCache[procInput.value];
-            if(hit) procIdInput.value = hit.id;
-            if(!procIdInput.value){
+            const typed = (procInput.value || '').trim();
+            const hit = procCache[typed];
+            procIdInput.value = (hit && hit.id) ? hit.id : '';
+            if(!typed){
               ev.preventDefault();
-              alert('Please pick a procedure from suggestions (type at least 2 letters).');
+              alert('Please enter a procedure name.');
             }
           });
         }
