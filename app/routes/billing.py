@@ -669,9 +669,13 @@ def invoice_edit(invoice_id):
 
         p = _dec(praw or "0")
         total = (q * p).quantize(Decimal("0.01"))
+        is_blank_line = (not desc and proc_id is None and itm_id is None and q <= 0 and p <= 0)
 
         if lid and lid in existing:
             ln = existing[lid]
+            if is_blank_line:
+                db.session.delete(ln)
+                continue
             ln.kind = kind
             ln.procedure_id = proc_id if kind == "procedure" else None
             ln.item_id = itm_id if kind == "drug" else None
@@ -682,6 +686,8 @@ def invoice_edit(invoice_id):
             ln.insurer_amount = Decimal("0.00")
             ln.patient_amount = total
         else:
+            if is_blank_line:
+                continue
             db.session.add(InvoiceLine(
                 invoice_id=inv.id,
                 kind=kind,
