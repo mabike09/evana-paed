@@ -101,11 +101,12 @@
                   <button class="btn btn-sm btn-outline-primary">Send to Triage</button>
                 </form>
 
-                {% if can_send_to_pharmacy and has_endpoint('pharmacy.pharmacy_dashboard') %}
-                  <a class="btn btn-sm btn-outline-success"
-                     href="{{ url_for('pharmacy.pharmacy_dashboard', patient_id=p.id) }}">
-                    Send to Pharmacy
-                  </a>
+                {% if can_send_to_pharmacy and has_endpoint('patients.patients_send_to_pharmacy') %}
+                  <form class="d-inline" method="post"
+                        action="{{ url_for('patients.patients_send_to_pharmacy', patient_id=p.id) }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button class="btn btn-sm btn-outline-success">Send to Pharmacy</button>
+                  </form>
                 {% endif %}
 
                 <a class="btn btn-sm btn-outline-secondary"

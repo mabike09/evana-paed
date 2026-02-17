@@ -1617,6 +1617,36 @@ def patients_send_to_triage(patient_id):
     flash(f"{p.first_name} {p.last_name} added to Triage queue.", "success")
     return redirect(url_for("patients.triage_queue"))
 
+@bp.post("/patients/<int:patient_id>/send-to-pharmacy")
+@login_required
+@roles_required("nurse", "admin")
+def patients_send_to_pharmacy(patient_id):
+    p = Patient.query.get_or_404(patient_id)
+    v = _get_or_create_open_visit(p.id)
+
+    existing = (
+        BillingQueue.query.filter_by(visit_id=v.id, status="Open")
+        .filter(BillingQueue.kind == "PHARMACY")
+        .first()
+    )
+    if existing:
+        flash(f"{p.first_name} {p.last_name} is already in Pharmacy queue.", "info")
+        return redirect(url_for("pharmacy.pharmacy_dashboard", queue_id=existing.id))
+
+    q = BillingQueue()
+    if hasattr(q, "patient_id"): q.patient_id = p.id
+    if hasattr(q, "visit_id"): q.visit_id = v.id
+    if hasattr(q, "status"): q.status = "Open"
+    if hasattr(q, "added_at"): q.added_at = datetime.utcnow()
+    if hasattr(q, "kind"): q.kind = "PHARMACY"
+    if hasattr(q, "description"):
+        q.description = "Sent from patients list to pharmacy (invoice needed)"
+
+    db.session.add(q)
+    db.session.commit()
+    flash(f"{p.first_name} {p.last_name} added to Pharmacy queue.", "success")
+    return redirect(url_for("pharmacy.pharmacy_dashboard", queue_id=q.id))
+
 
 @bp.get("/triage/queue")
 @login_required
