@@ -1220,6 +1220,7 @@ def add_visit(patient_id):
 
 @bp.route("/patients/<int:patient_id>/chart", methods=["GET"])
 @login_required
+@roles_required("admin", "doctor", "pediatrician")
 def patient_chart(patient_id):
     """Chart view: always drives data off the selected visit_id."""
     patient = Patient.query.get_or_404(patient_id)
@@ -1421,7 +1422,9 @@ def visit_close_and_bill(visit_id):
 
     db.session.commit()
     flash("Visit saved and routed to next step.", "success")
-    return redirect(url_for("patients.doctors_queue"))
+    if current_user.role in {"doctor", "pediatrician", "admin"}:
+        return redirect(url_for("patients.doctors_queue"))
+    return redirect(url_for("patients.patients_list"))
 
 @bp.post("/visits/<int:visit_id>/update-clinical")
 @bp.post("/visits/<int:visit_id>/clinical")
@@ -1619,7 +1622,7 @@ def patients_send_to_triage(patient_id):
 
 @bp.post("/patients/<int:patient_id>/send-to-pharmacy")
 @login_required
-@roles_required("nurse", "admin")
+@roles_required("reception", "nurse", "admin")
 def patients_send_to_pharmacy(patient_id):
     p = Patient.query.get_or_404(patient_id)
     v = _get_or_create_open_visit(p.id)
@@ -1721,6 +1724,8 @@ def triage_start(q_id):
 
         db.session.commit()
         flash("Triage saved. Patient sent to Doctor queue.", "success")
+        if current_user.role in {"nurse", "reception"}:
+            return redirect(url_for("patients.patients_list"))
         return redirect(url_for("patients.doctors_queue"))
 
     # 5) GET: show the triage form page
@@ -1730,7 +1735,7 @@ def triage_start(q_id):
 
 @bp.get("/doctors/queue")
 @login_required
-@roles_required("reception", "nurse", "doctor", "pediatrician", "admin")
+@roles_required("doctor", "pediatrician", "admin")
 def doctors_queue():
     query = BillingQueue.query.filter_by(status="Open")
     if hasattr(BillingQueue, "kind"):
@@ -1773,6 +1778,8 @@ def triage_finish(q_id):
     db.session.add(next_q)
     db.session.commit()
     flash("Triage completed. Patient moved to Doctor queue.", "success")
+    if current_user.role in {"nurse", "reception"}:
+        return redirect(url_for("patients.patients_list"))
     return redirect(url_for("patients.doctors_queue"))
 
 @bp.post("/visits/<int:visit_id>/add_drugs")

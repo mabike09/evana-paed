@@ -239,7 +239,7 @@ def inventory_stock():
 # ---------------------------
 @bp.route("/inventory/stock/txn", methods=["GET", "POST"])
 @login_required
-@roles_required("admin", "nurse")
+@roles_required("admin")
 def inventory_txn():
     form = StockTxnForm()
     items = Item.query.order_by(Item.name.asc()).all()
