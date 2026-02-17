@@ -74,32 +74,48 @@
           </div>
 
           <h2 class="h6">Dispense (paid drug lines only)</h2>
-          <div class="table-responsive">
-            <table class="table table-sm">
-              <thead>
-                <tr>
-                  <th>Description</th>
-                  <th>Qty</th>
-                  <th class="text-end">Unit Price</th>
-                  <th class="text-end">Line Total</th>
-                </tr>
-              </thead>
-              <tbody>
-                {% for line in paid_drug_lines %}
+          <form method="post" action="{{ url_for('pharmacy.pharmacy_dispense', q_id=selected.id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="table-responsive">
+              <table class="table table-sm">
+                <thead>
                   <tr>
-                    <td>{{ line.description }}</td>
-                    <td>{{ line.qty }}</td>
-                    <td class="text-end">UGX {{ '%.0f'|format(line.unit_price or 0) }}</td>
-                    <td class="text-end">UGX {{ '%.0f'|format(line.line_total or 0) }}</td>
+                    <th>Description</th>
+                    <th class="text-end">Prescribed</th>
+                    <th class="text-end">Already dispensed</th>
+                    <th class="text-end">Remaining</th>
+                    <th class="text-end">Stock available</th>
+                    <th style="width: 120px;">Dispense now</th>
                   </tr>
-                {% else %}
-                  <tr>
-                    <td colspan="4" class="text-muted">No paid drug items available for dispensing yet.</td>
-                  </tr>
-                {% endfor %}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {% for row in paid_drug_lines %}
+                    <tr>
+                      <td>
+                        {{ row.line.description }}
+                        <div class="small text-muted">{{ row.item.name if row.item else 'No linked stock item' }}</div>
+                      </td>
+                      <td class="text-end">{{ row.prescribed }}</td>
+                      <td class="text-end">{{ row.dispensed }}</td>
+                      <td class="text-end">{{ row.remaining }}</td>
+                      <td class="text-end fw-semibold">{{ row.stock }}</td>
+                      <td>
+                        <input type="hidden" name="line_id[]" value="{{ row.line.id }}">
+                        <input type="number" min="0" step="1" max="{{ row.remaining }}" name="qty[]" class="form-control form-control-sm" placeholder="0" {% if row.remaining <= 0 %}disabled{% endif %}>
+                      </td>
+                    </tr>
+                  {% else %}
+                    <tr>
+                      <td colspan="6" class="text-muted">No paid drug items available for dispensing yet.</td>
+                    </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+            {% if paid_drug_lines %}
+              <button class="btn btn-sm btn-success">Dispense & Deduct Stock</button>
+            {% endif %}
+          </form>
         {% else %}
           <div class="text-muted">Select a queue item to work on.</div>
         {% endif %}
