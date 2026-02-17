@@ -1622,7 +1622,7 @@ def patients_send_to_triage(patient_id):
 
 @bp.post("/patients/<int:patient_id>/send-to-pharmacy")
 @login_required
-@roles_required("nurse", "admin")
+@roles_required("reception", "nurse", "admin")
 def patients_send_to_pharmacy(patient_id):
     p = Patient.query.get_or_404(patient_id)
     v = _get_or_create_open_visit(p.id)

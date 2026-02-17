@@ -52,7 +52,7 @@
   <a class="btn btn-sm btn-success me-2" href="{{ url_for('patients.patients_new') }}">Register new</a>
 
   {% set can_manage = current_user.role in ['reception','nurse','admin'] %}
-  {% set can_send_to_pharmacy = current_user.role in ['nurse','admin'] %}
+  {% set can_send_to_pharmacy = current_user.role in ['reception','nurse','admin'] %}
   {% if can_manage %}
     <a class="btn btn-sm btn-outline-dark" href="{{ url_for('patients.triage_queue') }}">Triage Queue</a>
   {% endif %}
