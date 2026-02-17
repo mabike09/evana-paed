@@ -8,7 +8,7 @@
     {% if current_user.role in ['admin'] %}
       <a class="btn btn-sm btn-success ms-2" href="{{ url_for('inventory.items_new') }}">New Item</a>
     {% endif %}
-    {% if current_user.role in ['admin','nurse'] %}
+    {% if current_user.role in ['admin'] %}
       <a class="btn btn-sm btn-outline-primary ms-2" href="{{ url_for('inventory.inventory_txn') }}">Record Txn</a>
     {% endif %}
     {% if current_user.role in ['admin'] %}
