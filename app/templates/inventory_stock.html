@@ -11,6 +11,9 @@
     {% if current_user.role in ['admin','nurse'] %}
       <a class="btn btn-sm btn-outline-primary ms-2" href="{{ url_for('inventory.inventory_txn') }}">Record Txn</a>
     {% endif %}
+    {% if current_user.role in ['admin'] %}
+      <a class="btn btn-sm btn-outline-primary ms-2" href="{{ url_for('inventory.inventory_bulk_txn') }}">Bulk Record Txn</a>
+    {% endif %}
   </div>
 
   <form class="d-flex" method="get" action="{{ url_for('inventory.inventory_stock') }}">
