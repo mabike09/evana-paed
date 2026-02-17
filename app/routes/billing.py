@@ -96,7 +96,7 @@ def add_invoice(patient_id):
         problems = "; ".join([f"{field}: {', '.join(errs)}" for field, errs in form.errors.items()])
         flash(f"Please correct invoice form errors. {problems}", "danger")
 
-    return redirect(url_for("patients.patient_chart", patient_id=patient_id, tab="billing"))
+    return redirect(url_for("billing.patient_billing", patient_id=patient_id))
 
 
 # ------------------------------------------------------------------------------
@@ -126,7 +126,7 @@ def add_payment(patient_id, invoice_id):
             raise InvalidOperation()
     except Exception:
         flash("Payment not saved — invalid amount.", "danger")
-        return redirect(url_for("patients.patient_chart", patient_id=patient_id, tab="billing"))
+        return redirect(url_for("billing.patient_billing", patient_id=patient_id))
 
     # Date parse (YYYY-MM-DD), fallback = today
     try:
@@ -167,7 +167,7 @@ def add_payment(patient_id, invoice_id):
         db.session.rollback()
         current_app.logger.exception("Payment insert failed")
         flash("Payment not saved — database error.", "danger")
-        return redirect(url_for("patients.patient_chart", patient_id=patient_id, tab="billing"))
+        return redirect(url_for("billing.patient_billing", patient_id=patient_id))
 
     # -----------------------------
     # Auto-release LAB after full payment (non-blocking)
@@ -289,7 +289,7 @@ def add_payment(patient_id, invoice_id):
             db.session.rollback()
             current_app.logger.exception("Lab order auto-release failed (non-blocking).")
 
-    return redirect(url_for("patients.patient_chart", patient_id=patient_id, tab="billing"))
+    return redirect(url_for("billing.patient_billing", patient_id=patient_id))
 
     # Date parse (YYYY-MM-DD), fallback = today
     try:
@@ -421,7 +421,7 @@ def add_payment(patient_id, invoice_id):
         current_app.logger.exception("Payment insert failed")
         flash("Payment not saved — database error.", "danger")
 
-    return redirect(url_for("patients.patient_chart", patient_id=patient_id, tab="billing"))
+    return redirect(url_for("billing.patient_billing", patient_id=patient_id))
 
 
 def _normalized_kind(proc_id=None, item_id=None):
