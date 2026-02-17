@@ -757,7 +757,7 @@ def invoice_edit(invoice_id):
         db.session.rollback()
         flash("Could not save invoice changes.", "danger")
 
-    return redirect(url_for("patients.patient_chart", patient_id=inv.patient_id, tab="billing"))
+    return redirect(url_for("billing.patient_billing", patient_id=inv.patient_id))
 
 
 # ------------------------------------------------------------------------------
