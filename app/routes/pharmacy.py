@@ -119,7 +119,7 @@ def pharmacy_dashboard():
 
 
 
-@bp.post("/queue/<int:q_id>/clear")
+@bp.route("/queue/<int:q_id>/clear", methods=["POST"], endpoint="pharmacy_queue_clear")
 @login_required
 @roles_required("nurse", "admin")
 def pharmacy_queue_clear(q_id):
@@ -136,7 +136,7 @@ def pharmacy_queue_clear(q_id):
     flash("Patient removed from pharmacy queue.", "success")
     return redirect(url_for("pharmacy.pharmacy_dashboard"))
 
-@bp.post("/queue/<int:q_id>/dispense")
+@bp.route("/queue/<int:q_id>/dispense", methods=["POST"], endpoint="pharmacy_dispense")
 @login_required
 @roles_required("nurse", "admin")
 def pharmacy_dispense(q_id):
@@ -213,7 +213,7 @@ def pharmacy_dispense(q_id):
 
     return redirect(url_for("pharmacy.pharmacy_dashboard", queue_id=q.id))
 
-@bp.post("/queue/<int:q_id>/send-to-billing")
+@bp.route("/queue/<int:q_id>/send-to-billing", methods=["POST"], endpoint="pharmacy_send_to_billing")
 @login_required
 @roles_required("nurse", "admin")
 def pharmacy_send_to_billing(q_id):
@@ -241,7 +241,7 @@ def pharmacy_send_to_billing(q_id):
     return redirect(url_for("pharmacy.pharmacy_dashboard"))
 
 
-@bp.post("/queue/<int:q_id>/prepare-invoice")
+@bp.route("/queue/<int:q_id>/prepare-invoice", methods=["POST"], endpoint="pharmacy_prepare_invoice")
 @login_required
 @roles_required("nurse", "admin")
 def pharmacy_prepare_invoice(q_id):
