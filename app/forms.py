@@ -130,6 +130,19 @@ class StockTxnForm(FlaskForm):
     note = StringField("Note", validators=[Optional(), Length(max=200)])
     submit = SubmitField("Record")
 
+
+class BulkStockTxnForm(FlaskForm):
+    reason = SelectField("Reason", choices=[
+        ("Restock", "Restock"),
+        ("Adjustment", "Adjustment"),
+        ("Consume-Visit", "Consume (Visit)"),
+        ("Consume-Other", "Consume (Other)"),
+        ("Return", "Return"),
+        ("WriteOff", "Write Off")
+    ], validators=[DataRequired()])
+    note = StringField("Note", validators=[Optional(), Length(max=200)])
+    submit = SubmitField("Record Bulk Txn")
+
 class VisitConsumeForm(FlaskForm):
     item_id = SelectField("Item", choices=[], coerce=int, validators=[DataRequired()])
     qty = DecimalField("Quantity to dispense", places=2, validators=[DataRequired(), NumberRange(min=0.01)])

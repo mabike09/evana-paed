@@ -6,7 +6,7 @@ from flask_login import login_required, current_user
 from sqlalchemy import func, or_, and_
 from ..permissions import roles_required
 from ..extensions import db
-from ..forms import StockTxnForm, ItemPriceForm, VisitConsumeForm
+from ..forms import StockTxnForm, ItemPriceForm, VisitConsumeForm, BulkStockTxnForm
 from ..models import (
     Item, ItemTxn, DispenseTxn, Visit, Invoice, InvoiceLine, Patient,
     PriceBook, PriceItem, Payer
@@ -266,6 +266,53 @@ def inventory_txn():
     elif request.method == "POST":
         flash("Please correct the errors below.", "danger")
     return render_template("inventory_txn.html", form=form)
+
+@bp.route("/inventory/stock/txn/bulk", methods=["GET", "POST"])
+@login_required
+@roles_required("admin")
+def inventory_bulk_txn():
+    form = BulkStockTxnForm()
+    items = Item.query.filter_by(is_drug=True).order_by(Item.name.asc()).all()
+
+    if form.validate_on_submit():
+        changes = []
+        for it in items:
+            raw_qty = (request.form.get(f"qty_{it.id}") or "").strip()
+            if not raw_qty:
+                continue
+            try:
+                qty_change_int = int(Decimal(raw_qty))
+            except Exception:
+                flash(f"{it.name}: quantity must be a whole number.", "danger")
+                return redirect(url_for("inventory.inventory_bulk_txn"))
+            if qty_change_int == 0:
+                continue
+            changes.append((it, qty_change_int))
+
+        if not changes:
+            flash("No quantity changes entered.", "warning")
+            return redirect(url_for("inventory.inventory_bulk_txn"))
+
+        note = (form.note.data or "").strip()
+        for it, qty_change_int in changes:
+            it.current_qty = int(it.current_qty or 0) + qty_change_int
+            db.session.add(
+                ItemTxn(
+                    item_id=it.id,
+                    qty_change=qty_change_int,
+                    reason=form.reason.data,
+                    note=note,
+                    user_id=current_user.id,
+                )
+            )
+
+        db.session.commit()
+        flash(f"Bulk stock transaction recorded for {len(changes)} drug(s).", "success")
+        return redirect(url_for("inventory.inventory_stock", mode="inventory"))
+    elif request.method == "POST":
+        flash("Please correct the errors below.", "danger")
+
+    return render_template("inventory_bulk_txn.html", form=form, items=items)
 
 # ---------------------------
 # Dispense (as you had)
