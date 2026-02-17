@@ -111,6 +111,25 @@ def pharmacy_dashboard():
 
 
 
+
+
+@bp.post("/queue/<int:q_id>/clear")
+@login_required
+@roles_required("nurse", "admin")
+def pharmacy_queue_clear(q_id):
+    q = BillingQueue.query.get_or_404(q_id)
+    if (getattr(q, "kind", "") or "").upper() != "PHARMACY":
+        abort(400)
+
+    q.status = "Closed"
+    if hasattr(q, "description"):
+        base = (q.description or "").strip()
+        q.description = f"{base} | Cleared from pharmacy queue" if base else "Cleared from pharmacy queue"
+
+    db.session.commit()
+    flash("Patient removed from pharmacy queue.", "success")
+    return redirect(url_for("pharmacy.pharmacy_dashboard"))
+
 @bp.post("/queue/<int:q_id>/dispense")
 @login_required
 @roles_required("nurse", "admin")

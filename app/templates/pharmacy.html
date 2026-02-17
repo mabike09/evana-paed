@@ -18,20 +18,26 @@
       </div>
       <div class="list-group list-group-flush">
         {% for q in queue %}
-          <a class="list-group-item list-group-item-action {% if selected and selected.id == q.id %}active{% endif %}"
-             href="{{ url_for('pharmacy.pharmacy_dashboard', queue_id=q.id) }}">
-            <div class="d-flex justify-content-between">
-              <div>
+          <div class="list-group-item {% if selected and selected.id == q.id %}active{% endif %}">
+            <div class="d-flex justify-content-between align-items-start gap-2">
+              <a class="text-decoration-none flex-grow-1 {% if selected and selected.id == q.id %}text-white{% else %}text-body{% endif %}"
+                 href="{{ url_for('pharmacy.pharmacy_dashboard', queue_id=q.id) }}">
                 <div class="fw-semibold">
                   {% if q.patient %}{{ q.patient.first_name }} {{ q.patient.last_name }}{% else %}Patient #{{ q.patient_id }}{% endif %}
                 </div>
                 <div class="small {% if selected and selected.id == q.id %}text-white-50{% else %}text-muted{% endif %}">
                   Visit #{{ q.visit_id or '—' }} · {{ q.description or 'Pharmacy queue' }}
                 </div>
-              </div>
-              <small>{{ q.added_at }}</small>
+                <small class="{% if selected and selected.id == q.id %}text-white-50{% else %}text-muted{% endif %}">{{ q.added_at }}</small>
+              </a>
+              <form method="post" action="{{ url_for('pharmacy.pharmacy_queue_clear', q_id=q.id) }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button class="btn btn-sm {% if selected and selected.id == q.id %}btn-light{% else %}btn-outline-danger{% endif %}">
+                  Clear
+                </button>
+              </form>
             </div>
-          </a>
+          </div>
         {% else %}
           <div class="list-group-item text-muted">No patients in pharmacy queue.</div>
         {% endfor %}
