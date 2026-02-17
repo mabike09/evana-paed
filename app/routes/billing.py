@@ -190,6 +190,37 @@ def add_payment(patient_id, invoice_id):
             fully_paid = (balance <= Decimal("0"))
 
             if fully_paid:
+                # Send paid drug visits to PHARMACY queue (dispense only paid items)
+                try:
+                    has_drugs = (
+                        InvoiceLine.query
+                        .filter_by(invoice_id=inv.id)
+                        .filter(func.lower(func.trim(func.coalesce(InvoiceLine.kind, ""))) == "drug")
+                        .first()
+                    ) is not None
+                    if has_drugs:
+                        pq = BillingQueue.query.filter_by(status="Open")
+                        if hasattr(BillingQueue, "kind"):
+                            pq = pq.filter(BillingQueue.kind == "PHARMACY")
+                        if visit_id:
+                            pq = pq.filter(BillingQueue.visit_id == visit_id)
+                        else:
+                            pq = pq.filter(BillingQueue.patient_id == patient_id)
+
+                        if pq.first() is None:
+                            pharm_q = BillingQueue()
+                            if hasattr(pharm_q, "patient_id"): pharm_q.patient_id = patient_id
+                            if hasattr(pharm_q, "visit_id"):   pharm_q.visit_id = visit_id
+                            if hasattr(pharm_q, "status"):     pharm_q.status = "Open"
+                            if hasattr(pharm_q, "added_at"):   pharm_q.added_at = datetime.utcnow()
+                            if hasattr(pharm_q, "added_by"):   pharm_q.added_by = getattr(current_user, "id", None)
+                            if hasattr(pharm_q, "kind"):       pharm_q.kind = "PHARMACY"
+                            if hasattr(pharm_q, "description"):
+                                pharm_q.description = "Invoice paid — ready for pharmacy dispensing"
+                            db.session.add(pharm_q)
+                except Exception:
+                    current_app.logger.exception("Failed ensuring PHARMACY queue entry after payment")
+
                 # 1) Release any lab orders waiting for payment
                 if visit_id:
                     lab_orders = LabOrder.query.filter_by(

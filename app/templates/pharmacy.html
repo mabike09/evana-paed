@@ -2,467 +2,107 @@
 {% block title %}Pharmacy{% endblock %}
 {% block content %}
 
-<div class="d-flex flex-wrap align-items-center gap-3 mb-3">
+<div class="d-flex justify-content-between align-items-center mb-3">
   <div>
     <h1 class="h4 mb-1">Pharmacy</h1>
-    <p class="text-muted mb-0">Doctor → Pharmacy → Billing, or direct patient-to-pharmacy handoff from the patient list.</p>
-  </div>
-  <div class="ms-auto d-flex flex-wrap gap-2 align-items-center">
-    <div class="input-group input-group-sm">
-      <span class="input-group-text">Search</span>
-      <input class="form-control" type="search"
-             placeholder="Patient / Visit # / Prescription # / Invoice #">
-    </div>
-    <div class="btn-group btn-group-sm" role="group" aria-label="Quick filters">
-      <button class="btn btn-outline-primary">Today</button>
-      <button class="btn btn-outline-primary">This week</button>
-      <button class="btn btn-outline-primary">Custom range</button>
-    </div>
-    <select class="form-select form-select-sm w-auto" aria-label="Status filter">
-      <option selected>Status: All</option>
-      <option>New</option>
-      <option>Dispensed–Not Billed</option>
-      <option>Sent to Billing</option>
-      <option>Billed</option>
-      <option>On Hold</option>
-      <option>Returned</option>
-    </select>
-  </div>
-</div>
-
-{% if patient_id %}
-  <div class="alert alert-info d-flex justify-content-between align-items-center">
-    <div>Patient {{ patient_id }} sent to pharmacy. Select a queue item to begin dispensing.</div>
-    <button class="btn btn-sm btn-outline-primary">Add to queue</button>
-  </div>
-{% endif %}
-
-<div class="row g-3 mb-4">
-  <div class="col-6 col-lg-3">
-    <div class="card border-0 shadow-sm h-100">
-      <div class="card-body">
-        <div class="text-muted small">Low stock</div>
-        <div class="d-flex align-items-center justify-content-between">
-          <span class="h5 mb-0">12</span>
-          <span class="badge bg-warning text-dark">Needs reorder</span>
-        </div>
-      </div>
-    </div>
-  </div>
-  <div class="col-6 col-lg-3">
-    <div class="card border-0 shadow-sm h-100">
-      <div class="card-body">
-        <div class="text-muted small">Expiring soon</div>
-        <div class="d-flex align-items-center justify-content-between">
-          <span class="h5 mb-0">7</span>
-          <span class="badge bg-warning text-dark">30 days</span>
-        </div>
-      </div>
-    </div>
-  </div>
-  <div class="col-6 col-lg-3">
-    <div class="card border-0 shadow-sm h-100">
-      <div class="card-body">
-        <div class="text-muted small">No price items</div>
-        <div class="d-flex align-items-center justify-content-between">
-          <span class="h5 mb-0">4</span>
-          <span class="badge bg-danger">Blocked</span>
-        </div>
-      </div>
-    </div>
-  </div>
-  <div class="col-6 col-lg-3">
-    <div class="card border-0 shadow-sm h-100">
-      <div class="card-body">
-        <div class="text-muted small">Dispensed–Not Billed &gt; 30m</div>
-        <div class="d-flex align-items-center justify-content-between">
-          <span class="h5 mb-0">3</span>
-          <span class="badge bg-danger">Action needed</span>
-        </div>
-      </div>
-    </div>
+    <p class="text-muted mb-0">Workflow: Doctor → Billing → Pharmacy (dispense paid items only). From Patients list: Pharmacy → Billing → Pharmacy.</p>
   </div>
 </div>
 
 <div class="row g-3">
+  <div class="col-lg-5">
+    <div class="card shadow-sm">
+      <div class="card-header bg-white d-flex justify-content-between align-items-center">
+        <strong>Pharmacy Queue</strong>
+        <span class="badge bg-secondary">{{ queue|length }}</span>
+      </div>
+      <div class="list-group list-group-flush">
+        {% for q in queue %}
+          <a class="list-group-item list-group-item-action {% if selected and selected.id == q.id %}active{% endif %}"
+             href="{{ url_for('pharmacy.pharmacy_dashboard', queue_id=q.id) }}">
+            <div class="d-flex justify-content-between">
+              <div>
+                <div class="fw-semibold">
+                  {% if q.patient %}{{ q.patient.first_name }} {{ q.patient.last_name }}{% else %}Patient #{{ q.patient_id }}{% endif %}
+                </div>
+                <div class="small {% if selected and selected.id == q.id %}text-white-50{% else %}text-muted{% endif %}">
+                  Visit #{{ q.visit_id or '—' }} · {{ q.description or 'Pharmacy queue' }}
+                </div>
+              </div>
+              <small>{{ q.added_at }}</small>
+            </div>
+          </a>
+        {% else %}
+          <div class="list-group-item text-muted">No patients in pharmacy queue.</div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+
   <div class="col-lg-7">
     <div class="card shadow-sm">
-      <div class="card-header bg-white d-flex justify-content-between align-items-center">
-        <strong>Dispensing Queue</strong>
-        <div class="small text-muted">Live updates • 6 in queue</div>
-      </div>
-      <div class="table-responsive">
-        <table class="table table-sm align-middle mb-0">
-          <thead class="table-light">
-            <tr>
-              <th>Time</th>
-              <th>Patient</th>
-              <th>Visit/Prescription #</th>
-              <th>Prescriber</th>
-              <th>Payer</th>
-              <th>Status</th>
-              <th class="text-end">Est. Total</th>
-              <th class="text-end">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td>09:15</td>
-              <td>
-                <div class="fw-semibold">Asha Namusoke</div>
-                <div class="small text-muted">4y • 18kg</div>
-              </td>
-              <td>V-1209 / RX-7712</td>
-              <td>Dr. Kintu</td>
-              <td>ICEA</td>
-              <td><span class="badge bg-info text-dark">NEW</span></td>
-              <td class="text-end">UGX 38,000</td>
-              <td class="text-end">
-                <button class="btn btn-sm btn-outline-primary">Review</button>
-              </td>
-            </tr>
-            <tr>
-              <td>09:42</td>
-              <td>
-                <div class="fw-semibold">Brian Ouma</div>
-                <div class="small text-muted">7y • 22kg</div>
-              </td>
-              <td>V-1210 / RX-7718</td>
-              <td>Dr. Lutaaya</td>
-              <td>Cash</td>
-              <td><span class="badge bg-primary">IN_PHARMACY</span></td>
-              <td class="text-end">UGX 52,500</td>
-              <td class="text-end">
-                <button class="btn btn-sm btn-outline-primary">Review</button>
-                <button class="btn btn-sm btn-outline-secondary">Hold</button>
-              </td>
-            </tr>
-            <tr>
-              <td>10:05</td>
-              <td>
-                <div class="fw-semibold">Hawa Nakasero</div>
-                <div class="small text-muted">11y • 34kg</div>
-              </td>
-              <td>V-1211 / RX-7721</td>
-              <td>Dr. Segawa</td>
-              <td>ICEA</td>
-              <td><span class="badge bg-warning text-dark">DISPENSED_NOT_BILLED</span></td>
-              <td class="text-end">UGX 74,900</td>
-              <td class="text-end">
-                <button class="btn btn-sm btn-outline-primary">Review</button>
-              </td>
-            </tr>
-            <tr>
-              <td>10:20</td>
-              <td>
-                <div class="fw-semibold">Juliet Mutesi</div>
-                <div class="small text-muted">3y • 14kg</div>
-              </td>
-              <td>V-1212 / RX-7724</td>
-              <td>Dr. Kintu</td>
-              <td>Cash</td>
-              <td><span class="badge bg-secondary">SENT_TO_BILLING</span></td>
-              <td class="text-end">UGX 21,000</td>
-              <td class="text-end">
-                <button class="btn btn-sm btn-outline-primary">Review</button>
-              </td>
-            </tr>
-            <tr>
-              <td>10:31</td>
-              <td>
-                <div class="fw-semibold">Eric Musoke</div>
-                <div class="small text-muted">9y • 29kg</div>
-              </td>
-              <td>V-1213 / RX-7726</td>
-              <td>Dr. Lutaaya</td>
-              <td>Cash</td>
-              <td><span class="badge bg-success">BILLED</span></td>
-              <td class="text-end">UGX 46,200</td>
-              <td class="text-end">
-                <button class="btn btn-sm btn-outline-primary">Review</button>
-              </td>
-            </tr>
-            <tr>
-              <td>10:44</td>
-              <td>
-                <div class="fw-semibold">Liam Ssebuliba</div>
-                <div class="small text-muted">5y • 19kg</div>
-              </td>
-              <td>V-1214 / RX-7729</td>
-              <td>Dr. Segawa</td>
-              <td>ICEA</td>
-              <td><span class="badge bg-danger">ON_HOLD</span></td>
-              <td class="text-end">UGX 19,800</td>
-              <td class="text-end">
-                <button class="btn btn-sm btn-outline-primary">Review</button>
-                <button class="btn btn-sm btn-outline-danger" data-bs-toggle="modal" data-bs-target="#returnsModal">Return</button>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    </div>
-  </div>
-
-  <div class="col-lg-5">
-    <div class="card shadow-sm mb-3">
       <div class="card-header bg-white">
-        <strong>Patient Safety Snapshot</strong>
+        <strong>Selected Patient</strong>
       </div>
       <div class="card-body">
-        <div class="d-flex justify-content-between">
-          <div>
-            <div class="fw-semibold">Asha Namusoke</div>
-            <div class="small text-muted">4 years • 18kg</div>
-            <div class="small text-muted">Payer: ICEA Gold</div>
+        {% if selected %}
+          <div class="mb-3">
+            <div class="fw-semibold mb-1">
+              {% if selected.patient %}{{ selected.patient.first_name }} {{ selected.patient.last_name }}{% else %}Patient #{{ selected.patient_id }}{% endif %}
+            </div>
+            <div class="small text-muted">Visit #{{ selected.visit_id or '—' }}</div>
           </div>
-          <span class="badge bg-danger align-self-start">Allergy: Penicillin</span>
-        </div>
-        <hr>
-        <div class="small text-muted">Dx: Acute bronchitis. Notes: Keep hydrated, review in 5 days.</div>
-      </div>
-    </div>
 
-    <div class="card shadow-sm mb-3">
-      <div class="card-header bg-white d-flex justify-content-between align-items-center">
-        <strong>Dispense Items</strong>
-        <button class="btn btn-sm btn-outline-primary">Dispense All</button>
-      </div>
-      <div class="card-body">
-        <div class="form-check mb-3">
-          <input class="form-check-input" type="checkbox" id="genericSub">
-          <label class="form-check-label" for="genericSub">
-            Allow generic substitution
-          </label>
-        </div>
-        <div class="mb-3">
-          <label class="form-label small">Reason (required if substitution)</label>
-          <select class="form-select form-select-sm">
-            <option selected>Choose reason</option>
-            <option>Out of stock</option>
-            <option>Equivalent available</option>
-            <option>Cost optimization</option>
-          </select>
-        </div>
+          {% if selected_invoice %}
+            <div class="alert alert-light border">
+              <div><strong>Invoice:</strong> {{ selected_invoice.number or ('INV-' ~ selected_invoice.id) }}</div>
+              <div><strong>Total:</strong> UGX {{ '%.0f'|format(selected_invoice.amount or 0) }}</div>
+            </div>
+          {% else %}
+            <div class="alert alert-warning">No invoice yet for this visit/patient.</div>
+          {% endif %}
 
-        <div class="table-responsive">
-          <table class="table table-sm align-middle">
-            <thead class="table-light">
-              <tr>
-                <th>Item</th>
-                <th>Dose</th>
-                <th>Qty Rx</th>
-                <th>Qty to dispense</th>
-                <th>Batch</th>
-                <th>Stock</th>
-                <th class="text-end">Line total</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr>
-                <td>
-                  <div class="fw-semibold">Amoxicillin 250mg</div>
-                  <div class="small text-muted">Capsules</div>
-                </td>
-                <td class="small">1 cap TDS × 5d</td>
-                <td>15</td>
-                <td><input class="form-control form-control-sm" type="number" value="15"></td>
-                <td>
-                  <select class="form-select form-select-sm">
-                    <option>AMX-24-01 · exp 12/2025</option>
-                    <option>AMX-24-02 · exp 08/2025</option>
-                  </select>
-                </td>
-                <td>
-                  <div class="small">Batch: 52</div>
-                  <div class="small text-muted">Total: 140</div>
-                </td>
-                <td class="text-end">UGX 18,000</td>
-              </tr>
-              <tr>
-                <td>
-                  <div class="fw-semibold">Salbutamol syrup</div>
-                  <div class="small text-muted">100ml</div>
-                </td>
-                <td class="small">5ml BD × 7d</td>
-                <td>1</td>
-                <td><input class="form-control form-control-sm" type="number" value="1"></td>
-                <td>
-                  <select class="form-select form-select-sm">
-                    <option>SAL-23-12 · exp 03/2025</option>
-                    <option>SAL-24-02 · exp 01/2026</option>
-                  </select>
-                </td>
-                <td>
-                  <div class="small">Batch: 8</div>
-                  <div class="small text-muted">Total: 42</div>
-                </td>
-                <td class="text-end">UGX 12,500</td>
-              </tr>
-              <tr>
-                <td>
-                  <div class="fw-semibold">Paracetamol 125mg</div>
-                  <div class="small text-muted">Tablets</div>
-                </td>
-                <td class="small">1 tab QID × 3d</td>
-                <td>12</td>
-                <td><input class="form-control form-control-sm" type="number" value="10"></td>
-                <td>
-                  <select class="form-select form-select-sm">
-                    <option>PCM-24-05 · exp 11/2026</option>
-                  </select>
-                </td>
-                <td>
-                  <div class="small text-danger">Out of stock</div>
-                  <div class="small text-muted">Total: 0</div>
-                </td>
-                <td class="text-end text-danger">No price</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-        <div class="alert alert-warning py-2 small mb-0">
-          Warnings: Out of stock items require partial dispense or override. No price items require admin override.
-        </div>
-      </div>
-    </div>
-
-    <div class="card shadow-sm">
-      <div class="card-header bg-white">
-        <strong>Charge Ticket + Send to Billing</strong>
-      </div>
-      <div class="card-body">
-        <div class="d-flex justify-content-between mb-2">
-          <span>Subtotal</span>
-          <span>UGX 30,500</span>
-        </div>
-        <div class="d-flex justify-content-between mb-2">
-          <span>Totals</span>
-          <span class="fw-semibold">UGX 30,500</span>
-        </div>
-        <button class="btn btn-primary w-100 mb-3">Confirm Dispense</button>
-        <div class="bg-light border rounded p-3">
-          <div class="small text-muted">Draft Invoice #</div>
-          <div class="fw-semibold">INV-2041</div>
-          <div class="badge bg-warning text-dark mt-2">Dispensed–Not Billed</div>
-          <div class="d-flex flex-wrap gap-2 mt-3">
-            <button class="btn btn-sm btn-outline-primary">Send to Billing</button>
-            <button class="btn btn-sm btn-outline-secondary">Open Invoice</button>
-            <button class="btn btn-sm btn-outline-dark">Print meds instructions</button>
+          <div class="d-flex gap-2 mb-3">
+            <form method="post" action="{{ url_for('pharmacy.pharmacy_prepare_invoice', q_id=selected.id) }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button class="btn btn-sm btn-outline-primary">Create / Edit Invoice</button>
+            </form>
+            <form method="post" action="{{ url_for('pharmacy.pharmacy_send_to_billing', q_id=selected.id) }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button class="btn btn-sm btn-outline-secondary">Send to Billing</button>
+            </form>
           </div>
-        </div>
-      </div>
-    </div>
-  </div>
-</div>
 
-<div class="card shadow-sm mt-4">
-  <div class="card-header bg-white d-flex justify-content-between align-items-center">
-    <strong>Dispensed–Not Billed Control Panel</strong>
-    <span class="badge bg-danger">2 &gt; 60 mins</span>
-  </div>
-  <div class="table-responsive">
-    <table class="table table-sm align-middle mb-0">
-      <thead class="table-light">
-        <tr>
-          <th>Time dispensed</th>
-          <th>Patient / Visit</th>
-          <th>Payer</th>
-          <th>Draft Invoice #</th>
-          <th class="text-end">Total</th>
-          <th>Ageing</th>
-          <th class="text-end">Actions</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr class="table-danger">
-          <td>08:30</td>
-          <td>Asha Namusoke / V-1209</td>
-          <td>ICEA</td>
-          <td>INV-2038</td>
-          <td class="text-end">UGX 38,000</td>
-          <td>1h 20m</td>
-          <td class="text-end">
-            <button class="btn btn-sm btn-outline-primary">Send to billing</button>
-            <button class="btn btn-sm btn-outline-secondary">Resend</button>
-            <button class="btn btn-sm btn-outline-danger" data-bs-toggle="modal" data-bs-target="#returnsModal">Reverse</button>
-          </td>
-        </tr>
-        <tr>
-          <td>09:50</td>
-          <td>Brian Ouma / V-1210</td>
-          <td>Cash</td>
-          <td>INV-2040</td>
-          <td class="text-end">UGX 52,500</td>
-          <td>30m</td>
-          <td class="text-end">
-            <button class="btn btn-sm btn-outline-primary">Send to billing</button>
-            <button class="btn btn-sm btn-outline-secondary">Resend</button>
-            <button class="btn btn-sm btn-outline-danger" data-bs-toggle="modal" data-bs-target="#returnsModal">Reverse</button>
-          </td>
-        </tr>
-      </tbody>
-    </table>
-  </div>
-</div>
-
-<div class="modal fade" id="returnsModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-lg">
-    <div class="modal-content">
-      <div class="modal-header">
-        <h5 class="modal-title">Returns & Reversals</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-      </div>
-      <div class="modal-body">
-        <div class="row g-3 mb-3">
-          <div class="col-md-6">
-            <label class="form-label">Find by invoice/prescription</label>
-            <input class="form-control" placeholder="INV-2041 or RX-7721">
+          <h2 class="h6">Dispense (paid drug lines only)</h2>
+          <div class="table-responsive">
+            <table class="table table-sm">
+              <thead>
+                <tr>
+                  <th>Description</th>
+                  <th>Qty</th>
+                  <th class="text-end">Unit Price</th>
+                  <th class="text-end">Line Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for line in paid_drug_lines %}
+                  <tr>
+                    <td>{{ line.description }}</td>
+                    <td>{{ line.qty }}</td>
+                    <td class="text-end">UGX {{ '%.0f'|format(line.unit_price or 0) }}</td>
+                    <td class="text-end">UGX {{ '%.0f'|format(line.line_total or 0) }}</td>
+                  </tr>
+                {% else %}
+                  <tr>
+                    <td colspan="4" class="text-muted">No paid drug items available for dispensing yet.</td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
           </div>
-          <div class="col-md-6">
-            <label class="form-label">Reason</label>
-            <select class="form-select">
-              <option selected>Choose reason</option>
-              <option>Patient request</option>
-              <option>Incorrect item</option>
-              <option>Expired stock</option>
-              <option>Billing error</option>
-            </select>
-          </div>
-        </div>
-        <div class="table-responsive">
-          <table class="table table-sm align-middle">
-            <thead class="table-light">
-              <tr>
-                <th>Item</th>
-                <th>Qty dispensed</th>
-                <th>Qty to return</th>
-                <th>Batch</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr>
-                <td>Amoxicillin 250mg</td>
-                <td>15</td>
-                <td><input class="form-control form-control-sm" type="number" value="0"></td>
-                <td>AMX-24-01</td>
-              </tr>
-              <tr>
-                <td>Salbutamol syrup</td>
-                <td>1</td>
-                <td><input class="form-control form-control-sm" type="number" value="0"></td>
-                <td>SAL-23-12</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-        <div class="alert alert-info small mb-0">
-          Returned quantities go back to the same batch and create an audit entry.
-        </div>
-      </div>
-      <div class="modal-footer">
-        <button class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
-        <button class="btn btn-danger">Confirm Return</button>
+        {% else %}
+          <div class="text-muted">Select a queue item to work on.</div>
+        {% endif %}
       </div>
     </div>
   </div>
