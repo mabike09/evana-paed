@@ -49,11 +49,17 @@ def _drug_rows_for_invoice(inv: Invoice):
         })
     return rows
 
-def _ensure_open_invoice(patient_id: int, visit_id: int | None) -> Invoice:
+
+def _invoice_query_for_context(patient_id: int, visit_id: int | None):
     q = Invoice.query.filter_by(patient_id=patient_id)
-    if visit_id:
+    if visit_id is None:
+        q = q.filter(Invoice.visit_id.is_(None))
+    else:
         q = q.filter_by(visit_id=visit_id)
-    inv = q.order_by(Invoice.id.desc()).first()
+    return q
+
+def _ensure_open_invoice(patient_id: int, visit_id: int | None) -> Invoice:
+    inv = _invoice_query_for_context(patient_id, visit_id).order_by(Invoice.id.desc()).first()
     if inv:
         return inv
 
@@ -93,10 +99,10 @@ def pharmacy_dashboard():
     selected_invoice = None
     paid_drug_lines = []
     if selected:
-        q = Invoice.query.filter_by(patient_id=selected.patient_id)
-        if getattr(selected, "visit_id", None):
-            q = q.filter_by(visit_id=selected.visit_id)
-        selected_invoice = q.order_by(Invoice.id.desc()).first()
+        selected_invoice = _invoice_query_for_context(
+            selected.patient_id,
+            getattr(selected, "visit_id", None),
+        ).order_by(Invoice.id.desc()).first()
 
         if _invoice_is_fully_paid(selected_invoice):
             paid_drug_lines = _drug_rows_for_invoice(selected_invoice)
@@ -113,7 +119,7 @@ def pharmacy_dashboard():
 
 
 
-@bp.post("/queue/<int:q_id>/clear")
+@bp.route("/queue/<int:q_id>/clear", methods=["POST"], endpoint="pharmacy_queue_clear")
 @login_required
 @roles_required("nurse", "admin")
 def pharmacy_queue_clear(q_id):
@@ -130,7 +136,7 @@ def pharmacy_queue_clear(q_id):
     flash("Patient removed from pharmacy queue.", "success")
     return redirect(url_for("pharmacy.pharmacy_dashboard"))
 
-@bp.post("/queue/<int:q_id>/dispense")
+@bp.route("/queue/<int:q_id>/dispense", methods=["POST"], endpoint="pharmacy_dispense")
 @login_required
 @roles_required("nurse", "admin")
 def pharmacy_dispense(q_id):
@@ -138,10 +144,7 @@ def pharmacy_dispense(q_id):
     if (getattr(q, "kind", "") or "").upper() != "PHARMACY" or (getattr(q, "status", "") or "") != "Open":
         abort(400)
 
-    iq = Invoice.query.filter_by(patient_id=q.patient_id)
-    if getattr(q, "visit_id", None):
-        iq = iq.filter_by(visit_id=q.visit_id)
-    inv = iq.order_by(Invoice.id.desc()).first()
+    inv = _invoice_query_for_context(q.patient_id, getattr(q, "visit_id", None)).order_by(Invoice.id.desc()).first()
     if not _invoice_is_fully_paid(inv):
         flash("Invoice must be fully paid before dispensing.", "warning")
         return redirect(url_for("pharmacy.pharmacy_dashboard", queue_id=q.id))
@@ -210,7 +213,7 @@ def pharmacy_dispense(q_id):
 
     return redirect(url_for("pharmacy.pharmacy_dashboard", queue_id=q.id))
 
-@bp.post("/queue/<int:q_id>/send-to-billing")
+@bp.route("/queue/<int:q_id>/send-to-billing", methods=["POST"], endpoint="pharmacy_send_to_billing")
 @login_required
 @roles_required("nurse", "admin")
 def pharmacy_send_to_billing(q_id):
@@ -238,7 +241,7 @@ def pharmacy_send_to_billing(q_id):
     return redirect(url_for("pharmacy.pharmacy_dashboard"))
 
 
-@bp.post("/queue/<int:q_id>/prepare-invoice")
+@bp.route("/queue/<int:q_id>/prepare-invoice", methods=["POST"], endpoint="pharmacy_prepare_invoice")
 @login_required
 @roles_required("nurse", "admin")
 def pharmacy_prepare_invoice(q_id):
