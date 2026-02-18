@@ -1,0 +1,75 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Reports {{ start_date }} to {{ end_date }}</title>
+  <style>
+    body { font-family: Arial, sans-serif; font-size: 12px; }
+    h2, h3, h4 { margin: 8px 0; }
+    table { width: 100%; border-collapse: collapse; margin-bottom: 10px; }
+    th, td { border: 1px solid #bbb; padding: 4px; text-align: left; }
+  </style>
+</head>
+<body>
+  <h2>Reports</h2>
+  <p>Date range: {{ start_date }} to {{ end_date }}</p>
+
+  <h3>A) Operations report</h3>
+  <h4>1) Patient traffic report</h4>
+  <table>
+    <tr><th>New patients</th><td>{{ patient_traffic.new }}</td></tr>
+    <tr><th>Returning patients</th><td>{{ patient_traffic.returning }}</td></tr>
+    <tr><th>Walk-ins</th><td>{{ patient_traffic.walk_in }}</td></tr>
+    <tr><th>Booked appointments</th><td>{{ patient_traffic.booked }}</td></tr>
+    <tr><th>Total visits</th><td>{{ patient_traffic.total }}</td></tr>
+  </table>
+  <h4>2) Queue & waiting time report</h4>
+  <table>
+    <tr><th>Average waiting / turn-around time (minutes)</th><td>{{ queue_report.average_turnaround_minutes }}</td></tr>
+    <tr><th>Visits measured</th><td>{{ queue_report.visits_measured }}</td></tr>
+  </table>
+
+  <h3>B) Revenue & Collections reports</h3>
+  <h4>1) Daily collections report</h4>
+  <table>
+    <tr><th>Total collected today (cash)</th><td>{{ collections.collected_cash }}</td></tr>
+    <tr><th>Total collected today (mobile money)</th><td>{{ collections.collected_mobile }}</td></tr>
+    <tr><th><strong>Total collected today (total)</strong></th><td><strong>{{ collections.collected_total }}</strong></td></tr>
+    <tr><th>Total sales today (cash)</th><td>{{ collections.sales_cash }}</td></tr>
+    <tr><th>Total sales today (mobile money)</th><td>{{ collections.sales_mobile }}</td></tr>
+    <tr><th>Total sales today (insurance)</th><td>{{ collections.sales_insurance }}</td></tr>
+    <tr><th><strong>Total sales today (total)</strong></th><td><strong>{{ collections.sales_total }}</strong></td></tr>
+  </table>
+
+  <h4>2) Insurance sales per insurance company</h4>
+  <table>
+    <tr><th>Insurance company</th><th>Sales</th></tr>
+    {% for insurer_name, amount in insurance_company_rows %}
+    <tr><td>{{ insurer_name }}</td><td>{{ amount }}</td></tr>
+    {% else %}
+    <tr><td colspan="2">No insurance sales in selected range.</td></tr>
+    {% endfor %}
+  </table>
+
+  <h3>C) Pharmacy & Inventory reports</h3>
+  <h4>1) Stock levels & reorder report</h4>
+  <h4>Low stock</h4>
+  <table>
+    <tr><th>Item</th><th>Current qty</th><th>Min level</th></tr>
+    {% for item in low_stock %}
+    <tr><td>{{ item.name }}</td><td>{{ item.current_qty }}</td><td>{{ item.min_level }}</td></tr>
+    {% else %}
+    <tr><td colspan="3">No low-stock items.</td></tr>
+    {% endfor %}
+  </table>
+  <h4>Out of stock</h4>
+  <table>
+    <tr><th>Item</th><th>Current qty</th><th>Min level</th></tr>
+    {% for item in out_of_stock %}
+    <tr><td>{{ item.name }}</td><td>{{ item.current_qty }}</td><td>{{ item.min_level }}</td></tr>
+    {% else %}
+    <tr><td colspan="3">No out-of-stock items.</td></tr>
+    {% endfor %}
+  </table>
+</body>
+</html>
