@@ -36,6 +36,7 @@
         {% if current_user.is_authenticated %}
           {% if current_user.role in ['reception','nurse','admin'] %}
             <li class="nav-item"><a class="nav-link" href="{{ url_for('patients.patients_list') }}">Patients</a></li>
+            <li class="nav-item"><a class="nav-link" href="{{ url_for('reports.reports_dashboard') }}">Reports</a></li>
           {% endif %}
           {% if current_user.is_authenticated and current_user.role in ['doctor','pediatrician','admin'] %}
             <li class="nav-item"><a class="nav-link" href="{{ url_for('patients.doctors_queue') }}">Doctor’s Queue</a></li>
