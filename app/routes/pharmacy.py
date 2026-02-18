@@ -24,6 +24,27 @@ def _invoice_is_fully_paid(inv: Invoice | None) -> bool:
     return inv_total > 0 and paid_total >= inv_total
 
 
+def _invoice_payer_type(inv: Invoice | None, queue_entry: BillingQueue | None = None) -> str:
+    payer_type = (getattr(inv, "payer_type", "") or "").strip().lower() if inv else ""
+    if payer_type:
+        return payer_type
+
+    patient = getattr(queue_entry, "patient", None) if queue_entry else None
+    insurance_provider = (getattr(patient, "insurance_provider", "") or "").strip().lower() if patient else ""
+    if insurance_provider and insurance_provider != "cash":
+        return "insurance"
+    return "cash"
+
+
+def _invoice_is_dispense_eligible(inv: Invoice | None, queue_entry: BillingQueue | None = None) -> bool:
+    if not inv:
+        return False
+    if _invoice_is_fully_paid(inv):
+        return True
+    # Insurance bills are verified/closed in Billing before dispensing.
+    return _invoice_payer_type(inv, queue_entry) == "insurance"
+
+
 def _drug_rows_for_invoice(inv: Invoice):
     rows = []
     line_disp = {}
@@ -104,7 +125,7 @@ def pharmacy_dashboard():
             getattr(selected, "visit_id", None),
         ).order_by(Invoice.id.desc()).first()
 
-        if _invoice_is_fully_paid(selected_invoice):
+        if _invoice_is_dispense_eligible(selected_invoice, selected):
             paid_drug_lines = _drug_rows_for_invoice(selected_invoice)
 
     return render_template(
@@ -145,8 +166,8 @@ def pharmacy_dispense(q_id):
         abort(400)
 
     inv = _invoice_query_for_context(q.patient_id, getattr(q, "visit_id", None)).order_by(Invoice.id.desc()).first()
-    if not _invoice_is_fully_paid(inv):
-        flash("Invoice must be fully paid before dispensing.", "warning")
+    if not _invoice_is_dispense_eligible(inv, q):
+        flash("Invoice must be paid or insurance-verified before dispensing.", "warning")
         return redirect(url_for("pharmacy.pharmacy_dashboard", queue_id=q.id))
 
     rows = {str(r["line"].id): r for r in _drug_rows_for_invoice(inv)}
