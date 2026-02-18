@@ -154,9 +154,12 @@ def reports_dashboard():
     total_collected_mobile = _as_money(sum(_as_money(p.amount) for p in payments_in_range if "mobile" in (p.method or "").lower()))
     total_collected = _as_money(total_collected_cash + total_collected_mobile)
 
-    total_sales_cash = _as_money(sum(_as_money(inv.amount) for inv in invoices_in_range if (inv.payer_type or "") == "Cash"))
+    gross_cash_sales = _as_money(sum(_as_money(inv.amount) for inv in invoices_in_range if (inv.payer_type or "") == "Cash"))
     total_sales_insurance = _as_money(sum(_as_money(inv.amount) for inv in invoices_in_range if (inv.payer_type or "") == "Insurance"))
+
+    # Mobile money sales are reported separately; avoid double-counting them inside cash sales.
     total_sales_mobile = total_collected_mobile
+    total_sales_cash = _as_money(max(Decimal("0.00"), gross_cash_sales - total_sales_mobile))
     total_sales = _as_money(total_sales_cash + total_sales_mobile + total_sales_insurance)
 
     insurance_company_totals = defaultdict(Decimal)
