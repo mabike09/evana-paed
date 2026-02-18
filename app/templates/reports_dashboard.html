@@ -1,0 +1,110 @@
+{% extends "base.html" %}
+{% block title %}Reports{% endblock %}
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+  <h2 class="mb-0">Reports</h2>
+  <a class="btn btn-outline-secondary"
+     href="{{ url_for('reports.reports_dashboard', start_date=start_date, end_date=end_date, export='pdf') }}">
+    Export to PDF
+  </a>
+</div>
+
+<form method="get" class="row g-2 align-items-end mb-4">
+  <div class="col-md-3">
+    <label class="form-label">Start date</label>
+    <input type="date" class="form-control" name="start_date" value="{{ start_date }}">
+  </div>
+  <div class="col-md-3">
+    <label class="form-label">End date</label>
+    <input type="date" class="form-control" name="end_date" value="{{ end_date }}">
+  </div>
+  <div class="col-md-2">
+    <button class="btn btn-primary w-100" type="submit">Apply</button>
+  </div>
+</form>
+
+<div class="card mb-4">
+  <div class="card-header"><strong>A) Operations report</strong></div>
+  <div class="card-body">
+    <h5>1) Patient traffic report</h5>
+    <ul>
+      <li>New patients: <strong>{{ patient_traffic.new }}</strong></li>
+      <li>Returning patients: <strong>{{ patient_traffic.returning }}</strong></li>
+      <li>Walk-ins: <strong>{{ patient_traffic.walk_in }}</strong></li>
+      <li>Booked appointments: <strong>{{ patient_traffic.booked }}</strong></li>
+      <li>Total visits: <strong>{{ patient_traffic.total }}</strong></li>
+    </ul>
+
+    <h5>2) Queue & waiting time report</h5>
+    <ul>
+      <li>Average waiting / turn-around time: <strong>{{ queue_report.average_turnaround_minutes }} minutes</strong></li>
+      <li>Visits measured: <strong>{{ queue_report.visits_measured }}</strong></li>
+    </ul>
+  </div>
+</div>
+
+<div class="card mb-4">
+  <div class="card-header"><strong>B) Revenue & Collections reports</strong></div>
+  <div class="card-body">
+    <h5>1) Daily collections report</h5>
+    <table class="table table-sm table-striped">
+      <tr><th>Metric</th><th>Amount</th></tr>
+      <tr><td>Total collected today (Cash)</td><td>{{ collections.collected_cash }}</td></tr>
+      <tr><td>Total collected today (Mobile Money)</td><td>{{ collections.collected_mobile }}</td></tr>
+      <tr><td>Total collected today (Total)</td><td>{{ collections.collected_total }}</td></tr>
+      <tr><td>Total sales today (Cash)</td><td>{{ collections.sales_cash }}</td></tr>
+      <tr><td>Total sales today (Mobile Money)</td><td>{{ collections.sales_mobile }}</td></tr>
+      <tr><td>Total sales today (Insurance)</td><td>{{ collections.sales_insurance }}</td></tr>
+      <tr><td>Total sales today (Total)</td><td>{{ collections.sales_total }}</td></tr>
+    </table>
+
+    <h5>2) Insurance sales by company</h5>
+    <table class="table table-sm table-bordered">
+      <tr><th>Insurance company</th><th>Sales amount</th></tr>
+      {% for insurer_name, amount in insurance_company_rows %}
+      <tr>
+        <td>{{ insurer_name }}</td>
+        <td>{{ amount }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="2" class="text-muted">No insurance sales in selected range.</td></tr>
+      {% endfor %}
+    </table>
+  </div>
+</div>
+
+<div class="card mb-4">
+  <div class="card-header"><strong>C) Pharmacy & Inventory reports</strong></div>
+  <div class="card-body">
+    <h5>1) Stock levels & reorder report</h5>
+
+    <h6>Low stock</h6>
+    <table class="table table-sm table-striped">
+      <tr><th>Item</th><th>Current qty</th><th>Min level</th></tr>
+      {% for item in low_stock %}
+      <tr>
+        <td>{{ item.name }}</td>
+        <td>{{ item.current_qty }}</td>
+        <td>{{ item.min_level }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="3" class="text-muted">No low-stock items.</td></tr>
+      {% endfor %}
+    </table>
+
+    <h6>Out of stock</h6>
+    <table class="table table-sm table-striped">
+      <tr><th>Item</th><th>Current qty</th><th>Min level</th></tr>
+      {% for item in out_of_stock %}
+      <tr>
+        <td>{{ item.name }}</td>
+        <td>{{ item.current_qty }}</td>
+        <td>{{ item.min_level }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="3" class="text-muted">No out-of-stock items.</td></tr>
+      {% endfor %}
+    </table>
+  </div>
+</div>
+{% endblock %}
