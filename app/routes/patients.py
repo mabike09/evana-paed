@@ -542,6 +542,48 @@ def _resolve_payer_kind(p: Patient) -> str:
     return "Insurance" if (ip and ip != "cash") else "Cash"
 
 
+def _is_insurance_patient(p: Patient | None) -> bool:
+    return _resolve_payer_kind(p) == "Insurance" if p else False
+
+
+def _upsert_queue_entry(patient_id: int, visit_id: int | None, kind: str, description: str = ""):
+    """Open (or create) a queue entry for a visit/patient and queue kind."""
+    if not patient_id:
+        return
+
+    q = BillingQueue.query.filter_by(status="Open")
+    if hasattr(BillingQueue, "kind"):
+        q = q.filter(BillingQueue.kind == kind)
+    if visit_id:
+        q = q.filter(BillingQueue.visit_id == visit_id)
+    else:
+        q = q.filter(BillingQueue.patient_id == patient_id)
+
+    entry = q.order_by(BillingQueue.id.desc()).first()
+    if entry:
+        if hasattr(entry, "description") and description:
+            entry.description = description
+        return entry
+
+    entry = BillingQueue()
+    if hasattr(entry, "patient_id"):
+        entry.patient_id = patient_id
+    if hasattr(entry, "visit_id"):
+        entry.visit_id = visit_id
+    if hasattr(entry, "status"):
+        entry.status = "Open"
+    if hasattr(entry, "added_at"):
+        entry.added_at = datetime.utcnow()
+    if hasattr(entry, "added_by"):
+        entry.added_by = getattr(current_user, "id", None)
+    if hasattr(entry, "kind"):
+        entry.kind = kind
+    if hasattr(entry, "description") and description:
+        entry.description = description
+    db.session.add(entry)
+    return entry
+
+
 def _get_or_create_invoice(p: Patient, v: Visit, issue_date: datetime | None = None) -> Invoice:
     inv = Invoice.query.filter_by(visit_id=v.id).order_by(Invoice.id.desc()).first()
     if inv:
@@ -899,14 +941,7 @@ def visit_send_to_lab(visit_id):
         pass
 
     # 2) Add to LAB queue (patient leaves doctor queue when sent to lab)
-    labq = BillingQueue()
-    if hasattr(labq, "patient_id"): labq.patient_id = p.id
-    if hasattr(labq, "visit_id"):   labq.visit_id   = v.id
-    if hasattr(labq, "status"):     labq.status     = "Open"
-    if hasattr(labq, "added_at"):   labq.added_at   = datetime.utcnow()
-    if hasattr(labq, "kind"):       labq.kind       = "LAB"
-    if hasattr(labq, "description"):labq.description= "Sent to Lab from Doctor"
-    db.session.add(labq)
+    _upsert_queue_entry(p.id, v.id, "LAB", "Sent to Lab from Doctor")
     
     chosen = []
     if PriceItem:
@@ -1007,7 +1042,8 @@ def visit_send_to_lab(visit_id):
             lo = LabOrder()
             if hasattr(lo, "patient_id"): lo.patient_id = p.id
             if hasattr(lo, "visit_id"):   lo.visit_id   = v.id
-            if hasattr(lo, "status"):     lo.status     = "PendingPayment"
+            if hasattr(lo, "status"):
+                lo.status = "Pending" if _is_insurance_patient(p) else "PendingPayment"
             if hasattr(lo, "created_at"): lo.created_at = datetime.utcnow()
             if hasattr(lo, "created_by"): lo.created_by = getattr(current_user, "id", None)
 
@@ -1043,14 +1079,24 @@ def visit_send_to_lab(visit_id):
         return redirect(url_for("patients.patient_chart", patient_id=p.id, tab="lab"))
 
 
-    # 3) Put/keep the visit in the Billing queue
-    _enqueue_billing(
-        p.id,
-        v.id,
-        note=f"Lab tests: {', '.join([(getattr(r,'item_name', None) or getattr(r,'item_code','Lab Test')) for r in chosen])}"
-    )
+    lab_note = f"Lab tests: {', '.join([(getattr(r,'item_name', None) or getattr(r,'item_code','Lab Test')) for r in chosen])}"
+    if _is_insurance_patient(p):
+        try:
+            bq = BillingQueue.query.filter_by(visit_id=v.id, status="Open")
+            if hasattr(BillingQueue, "kind"):
+                bq = bq.filter(BillingQueue.kind == "BILLING")
+            for e in bq.all():
+                e.status = "Closed"
+        except Exception:
+            pass
+    else:
+        _enqueue_billing(p.id, v.id, note=lab_note)
 
     db.session.commit()
+    if _is_insurance_patient(p):
+        flash(f"Added {len(chosen)} lab test(s). Insurance patient sent directly to Lab queue.", "success")
+        return redirect(url_for("lab.lab_queue", from_chart=1, patient_id=p.id, visit_id=v.id))
+
     flash(
         f"Added {len(chosen)} lab test(s) to invoice. Patient must pay before the request reaches the lab queue.",
         "success",
@@ -1415,7 +1461,10 @@ def visit_close_and_bill(visit_id):
     elif has_procedures:
         note = "Visit closed: procedures billed"
     if note:
-        _enqueue_billing(v.patient_id, v.id, note=note)
+        if _is_insurance_patient(v.patient) and has_drugs:
+            _upsert_queue_entry(v.patient_id, v.id, "PHARMACY", "Insurance visit closed: ready for pharmacy dispensing")
+        else:
+            _enqueue_billing(v.patient_id, v.id, note=note)
 
     _safe_setattr(v, "closed_at", datetime.utcnow())
     _safe_setattr(v, "status", "Closed")
@@ -1643,7 +1692,7 @@ def patients_send_to_pharmacy(patient_id):
     if hasattr(q, "added_at"): q.added_at = datetime.utcnow()
     if hasattr(q, "kind"): q.kind = "PHARMACY"
     if hasattr(q, "description"):
-        q.description = "Sent from patients list to pharmacy (invoice needed)"
+        q.description = "Sent from patients list to pharmacy (nurse can create invoice here)"
 
     db.session.add(q)
     db.session.commit()
@@ -1842,7 +1891,10 @@ def visit_add_drugs_bulk(visit_id):
     except Exception:
         pass
 
-    _enqueue_billing(p.id, v.id, note="Drugs added")
+    if _is_insurance_patient(p):
+        _upsert_queue_entry(p.id, v.id, "PHARMACY", "Insurance prescription: ready for dispensing")
+    else:
+        _enqueue_billing(p.id, v.id, note="Drugs added")
 
     db.session.commit()
     flash("Drugs added to visit.", "success")

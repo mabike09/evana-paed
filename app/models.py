@@ -83,6 +83,12 @@ class Visit(db.Model):
 
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False, index=True)
 
+    @property
+    def turnaround_minutes(self):
+        end = self.closed_at or datetime.utcnow()
+        start = self.created_at or end
+        return max(0, int((end - start).total_seconds() // 60))
+
 
 # ---------------------------
 # Billing: Invoice, Payment
