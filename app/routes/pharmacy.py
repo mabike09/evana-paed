@@ -134,6 +134,7 @@ def pharmacy_dashboard():
         selected=selected,
         selected_invoice=selected_invoice,
         paid_drug_lines=paid_drug_lines,
+        selected_is_insurance=((getattr(selected_invoice, "payer_type", "") or "").strip().lower() == "insurance") if selected_invoice else False,
     )
 
 
@@ -269,5 +270,5 @@ def pharmacy_prepare_invoice(q_id):
     q = BillingQueue.query.get_or_404(q_id)
     inv = _ensure_open_invoice(q.patient_id, q.visit_id)
     db.session.commit()
-    flash("Invoice is ready. Add items then send to billing.", "success")
-    return redirect(url_for("billing.invoice_edit", invoice_id=inv.id))
+    flash("Invoice is ready. You can add drugs and dispense from pharmacy.", "success")
+    return redirect(url_for("pharmacy.pharmacy_dashboard", queue_id=q.id))

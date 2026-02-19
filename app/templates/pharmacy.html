@@ -5,7 +5,7 @@
 <div class="d-flex justify-content-between align-items-center mb-3">
   <div>
     <h1 class="h4 mb-1">Pharmacy</h1>
-    <p class="text-muted mb-0">Workflow: Doctor → Billing → Pharmacy (dispense paid items only). From Patients list: Pharmacy → Billing → Pharmacy.</p>
+    <p class="text-muted mb-0">Cash workflow: Doctor → Billing → Pharmacy. Insurance workflow: direct Lab/Pharmacy with invoice handled in-station.</p>
   </div>
 </div>
 
@@ -71,15 +71,17 @@
           <div class="d-flex gap-2 mb-3">
             <form method="post" action="{{ url_for('pharmacy.pharmacy_prepare_invoice', q_id=selected.id) }}">
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-              <button class="btn btn-sm btn-outline-primary">Create / Edit Invoice</button>
+              <button class="btn btn-sm btn-outline-primary">Create / Edit Invoice (in Pharmacy)</button>
             </form>
+{% if not selected_is_insurance %}
             <form method="post" action="{{ url_for('pharmacy.pharmacy_send_to_billing', q_id=selected.id) }}">
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
               <button class="btn btn-sm btn-outline-secondary">Send to Billing</button>
             </form>
+            {% endif %}
           </div>
 
-          <h2 class="h6">Dispense (paid drug lines only)</h2>
+          <h2 class="h6">Dispense (paid cash invoices or insurance invoices)</h2>
           <form method="post" action="{{ url_for('pharmacy.pharmacy_dispense', q_id=selected.id) }}">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <div class="table-responsive">
