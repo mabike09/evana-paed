@@ -662,8 +662,12 @@ def api_search_catalog():
 def invoice_edit(invoice_id):
     inv = Invoice.query.options(joinedload(Invoice.lines)).get_or_404(invoice_id)
 
+    next_target = (request.values.get("next") or "").strip()
+    if not next_target.startswith("/"):
+        next_target = ""
+
     if request.method == "GET":
-        return render_template("invoice_edit.html", inv=inv, p=inv.patient)
+        return render_template("invoice_edit.html", inv=inv, p=inv.patient, next_target=next_target)
 
     def _dec(x, default="0.00"):
         try:
@@ -757,6 +761,8 @@ def invoice_edit(invoice_id):
         db.session.rollback()
         flash("Could not save invoice changes.", "danger")
 
+    if next_target:
+        return redirect(next_target)
     return redirect(url_for("billing.patient_billing", patient_id=inv.patient_id))
 
 
