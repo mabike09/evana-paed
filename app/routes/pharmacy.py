@@ -270,5 +270,17 @@ def pharmacy_prepare_invoice(q_id):
     q = BillingQueue.query.get_or_404(q_id)
     inv = _ensure_open_invoice(q.patient_id, q.visit_id)
     db.session.commit()
-    flash("Invoice is ready. You can add drugs and dispense from pharmacy.", "success")
+
+    drug_line_count = (
+        InvoiceLine.query.filter_by(invoice_id=inv.id)
+        .filter(InvoiceLine.kind == "drug")
+        .count()
+    )
+    if drug_line_count == 0:
+        flash("Invoice opened. Add drug items first before dispensing from pharmacy.", "warning")
+    elif _invoice_is_dispense_eligible(inv, q):
+        flash("Invoice is ready. You can now dispense from pharmacy.", "success")
+    else:
+        flash("Invoice opened. Complete billing/verification before dispensing.", "info")
+
     return redirect(url_for("pharmacy.pharmacy_dashboard", queue_id=q.id))
