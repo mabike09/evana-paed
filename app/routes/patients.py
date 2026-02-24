@@ -1456,11 +1456,14 @@ def visit_close_and_bill(visit_id):
         has_procedures = False
 
     # Close any open queue entries that should no longer be active
+    now = datetime.utcnow()
     try:
         open_entries = BillingQueue.query.filter_by(visit_id=v.id, status="Open").all()
         for e in open_entries:
             if (getattr(e, "kind", "") or "").upper() in {"DOCTOR", "LAB", "TRIAGE"}:
                 e.status = "Closed"
+                if hasattr(e, "closed_at"):
+                    e.closed_at = now
     except Exception:
         pass
 
@@ -1478,7 +1481,7 @@ def visit_close_and_bill(visit_id):
         else:
             _enqueue_billing(v.patient_id, v.id, note=note)
 
-    _safe_setattr(v, "closed_at", datetime.utcnow())
+    _safe_setattr(v, "closed_at", now)
     _safe_setattr(v, "status", "Closed")
 
     db.session.commit()

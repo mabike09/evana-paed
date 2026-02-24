@@ -170,6 +170,8 @@ def pharmacy_queue_clear(q_id):
         abort(400)
 
     q.status = "Closed"
+    if hasattr(q, "closed_at"):
+        q.closed_at = datetime.utcnow()
     if hasattr(q, "description"):
         base = (q.description or "").strip()
         q.description = f"{base} | Cleared from pharmacy queue" if base else "Cleared from pharmacy queue"
@@ -262,6 +264,8 @@ def pharmacy_dispense(q_id):
 def pharmacy_send_to_billing(q_id):
     q = BillingQueue.query.get_or_404(q_id)
     q.status = "Closed"
+    if hasattr(q, "closed_at"):
+        q.closed_at = datetime.utcnow()
 
     exists = (
         BillingQueue.query.filter_by(visit_id=q.visit_id, status="Open")

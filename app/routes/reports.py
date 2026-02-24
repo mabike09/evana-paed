@@ -7,7 +7,7 @@ from io import BytesIO
 from flask import Blueprint, Response, render_template, request
 from flask_login import login_required
 from ..permissions import roles_required
-from ..models import BillingQueue, DispenseTxn, Invoice, InvoiceLine, Item, Patient, Payment, Visit
+from ..models import BillingQueue, Invoice, InvoiceLine, Item, Patient, Payment, Visit
 
 bp = Blueprint("reports", __name__)
 
@@ -119,25 +119,33 @@ def reports_dashboard():
     for entry in queue_entries:
         queue_by_visit[entry.visit_id].append(entry)
 
-    dispense_by_visit = defaultdict(list)
-    for txn in DispenseTxn.query.filter(DispenseTxn.when >= start_dt, DispenseTxn.when < end_dt).all():
-        if txn.visit_id:
-            dispense_by_visit[txn.visit_id].append(txn)
-
     visit_ids = [v.id for v in visits_in_range]
     invoice_lines = InvoiceLine.query.join(Invoice, Invoice.id == InvoiceLine.invoice_id).filter(Invoice.visit_id.in_(visit_ids)).all() if visit_ids else []
     drug_visits = {line.invoice.visit_id for line in invoice_lines if (line.kind or "").lower() == "drug" and line.invoice and line.invoice.visit_id}
 
     turnaround_minutes = []
     for visit in visits_in_range:
-        starts = [q.added_at for q in queue_by_visit.get(visit.id, []) if q.added_at]
-        start_ts = min(starts) if starts else visit.created_at
+        visit_queue = queue_by_visit.get(visit.id, [])
+        triage_starts = [q.added_at for q in visit_queue if (q.kind or "").upper() == "TRIAGE" and q.added_at]
+        pharmacy_starts = [q.added_at for q in visit_queue if (q.kind or "").upper() == "PHARMACY" and q.added_at]
+
+        if triage_starts:
+            start_ts = min(triage_starts)
+        elif pharmacy_starts:
+            # Patients sent directly to pharmacy should start timing at pharmacy queue entry.
+            start_ts = min(pharmacy_starts)
+        else:
+            start_ts = visit.created_at
+
         if not start_ts:
             continue
 
         if visit.id in drug_visits:
-            clears = [d.when for d in dispense_by_visit.get(visit.id, []) if d.when]
-            end_ts = max(clears) if clears else visit.closed_at
+            pharmacy_clears = [
+                q.closed_at for q in visit_queue
+                if (q.kind or "").upper() == "PHARMACY" and getattr(q, "closed_at", None)
+            ]
+            end_ts = max(pharmacy_clears) if pharmacy_clears else visit.closed_at
         else:
             end_ts = visit.closed_at
 
