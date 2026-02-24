@@ -26,14 +26,16 @@ def _invoice_is_fully_paid(inv: Invoice | None) -> bool:
 
 def _invoice_payer_type(inv: Invoice | None, queue_entry: BillingQueue | None = None) -> str:
     payer_type = (getattr(inv, "payer_type", "") or "").strip().lower() if inv else ""
-    if payer_type:
-        return payer_type
 
     patient = getattr(queue_entry, "patient", None) if queue_entry else None
     insurance_provider = (getattr(patient, "insurance_provider", "") or "").strip().lower() if patient else ""
-    if insurance_provider and insurance_provider != "cash":
+    queue_indicates_insurance = bool(insurance_provider and insurance_provider != "cash")
+
+    if queue_indicates_insurance and payer_type in {"", "cash"}:
         return "insurance"
-    return "cash"
+    if payer_type:
+        return payer_type
+    return "insurance" if queue_indicates_insurance else "cash"
 
 
 def _invoice_is_dispense_eligible(inv: Invoice | None, queue_entry: BillingQueue | None = None) -> bool:
@@ -270,8 +272,11 @@ def pharmacy_prepare_invoice(q_id):
     q = BillingQueue.query.get_or_404(q_id)
     inv = _ensure_open_invoice(q.patient_id, q.visit_id)
 
-    if not (getattr(inv, "payer_type", "") or "").strip():
-        inv.payer_type = _invoice_payer_type(inv, q)
+    inferred_payer_type = _invoice_payer_type(inv, q)
+    if inferred_payer_type == "insurance" and (getattr(inv, "payer_type", "") or "").strip().lower() != "insurance":
+        inv.payer_type = "insurance"
+    elif not (getattr(inv, "payer_type", "") or "").strip():
+        inv.payer_type = inferred_payer_type
 
     db.session.commit()
 
