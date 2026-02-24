@@ -160,10 +160,6 @@ def reports_dashboard():
             for q in visit_queue:
                 if (q.kind or "").upper() != "PHARMACY":
                     continue
-                q_closed = getattr(q, "closed_at", None)
-                if q_closed:
-                    pharmacy_clears.append(q_closed)
-                    continue
                 parsed = _extract_pharmacy_clear_ts(getattr(q, "description", ""))
                 if parsed:
                     pharmacy_clears.append(parsed)
