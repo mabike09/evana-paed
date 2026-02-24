@@ -6,6 +6,7 @@ from flask import Blueprint, render_template, request, redirect, url_for, flash,
 from flask_login import login_required, current_user
 from sqlalchemy import or_, cast
 from sqlalchemy.types import String
+from sqlalchemy.orm import load_only
 
 from ..extensions import db
 from ..permissions import roles_required
@@ -914,7 +915,18 @@ def patients_list():
         for vv in visits:
             latest_visit_by_patient.setdefault(vv.patient_id, vv)
 
-    open_q_query = BillingQueue.query.filter_by(status="Open")
+    open_q_query = BillingQueue.query.options(
+        load_only(
+            BillingQueue.id,
+            BillingQueue.patient_id,
+            BillingQueue.visit_id,
+            BillingQueue.status,
+            BillingQueue.added_at,
+            BillingQueue.added_by,
+            BillingQueue.kind,
+            BillingQueue.description,
+        )
+    ).filter_by(status="Open")
     if hasattr(BillingQueue, "kind"):
         open_q_query = open_q_query.filter(BillingQueue.kind == "BILLING")
     open_q = open_q_query.order_by(BillingQueue.added_at.asc()).all()

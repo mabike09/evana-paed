@@ -4,6 +4,7 @@ from datetime import datetime
 from flask import Blueprint, render_template, request, redirect, url_for, flash, abort
 from flask_login import login_required, current_user
 from sqlalchemy import func
+from sqlalchemy.orm import load_only
 
 from ..extensions import db
 from app.permissions import roles_required
@@ -124,7 +125,19 @@ def pharmacy_dashboard():
     active_q_id = request.args.get("queue_id", type=int)
 
     queue = (
-        BillingQueue.query.filter_by(status="Open")
+        BillingQueue.query.options(
+            load_only(
+                BillingQueue.id,
+                BillingQueue.patient_id,
+                BillingQueue.visit_id,
+                BillingQueue.status,
+                BillingQueue.added_at,
+                BillingQueue.added_by,
+                BillingQueue.kind,
+                BillingQueue.description,
+            )
+        )
+        .filter_by(status="Open")
         .filter(BillingQueue.kind == "PHARMACY")
         .order_by(BillingQueue.added_at.asc())
         .all()
