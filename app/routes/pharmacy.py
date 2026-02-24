@@ -170,6 +170,8 @@ def pharmacy_queue_clear(q_id):
         abort(400)
 
     q.status = "Closed"
+    if hasattr(q, "closed_at"):
+        q.closed_at = datetime.utcnow()
     if hasattr(q, "description"):
         base = (q.description or "").strip()
         cleared_stamp = datetime.utcnow().replace(microsecond=0).isoformat() + "Z"
