@@ -148,13 +148,12 @@ def create_app():
         app._invoice_payer_normalized = True  # type: ignore[attr-defined]
 
 
-    @app.before_request
     def _ensure_billing_queue_closed_at_once():
         from flask import current_app
         if getattr(app, "_billing_queue_closed_at_checked", False):
             return
         try:
-            dialect = db.session.bind.dialect.name if db.session.bind is not None else ""
+              dialect = db.engine.dialect.name
             if dialect == "sqlite":
                 cols = db.session.execute(text("PRAGMA table_info(billing_queue)")).fetchall()
                 col_names = {str(row[1]).lower() for row in cols}
@@ -170,7 +169,13 @@ def create_app():
         except Exception as e:
             db.session.rollback()
             app.logger.warning(f"billing_queue.closed_at schema check skipped: {e}")
-            app._billing_queue_closed_at_checked = True  # type: ignore[attr-defined]
+
+    with app.app_context():
+        _ensure_billing_queue_closed_at_once()
+
+    @app.before_request
+    def _ensure_billing_queue_closed_at_before_request():
+        _ensure_billing_queue_closed_at_once()
 
     # -------------------------
     # Seed insurers once per process
