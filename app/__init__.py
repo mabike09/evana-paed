@@ -3,6 +3,7 @@ import logging
 import os
 from datetime import timedelta
 from flask import Flask
+from sqlalchemy import text
 from .extensions import db, migrate, login_manager, csrf
 from .utils import within_24h, has_endpoint
 from config import Config
@@ -118,6 +119,33 @@ def create_app():
     from .utils import invoice_editable_now
     app.config.setdefault("INVOICE_EDIT_WINDOW_HOURS", 24)
     app.jinja_env.globals.update(invoice_editable_now=invoice_editable_now)
+
+    # -------------------------
+    # Normalize legacy invoice payer enum values once per process
+    # -------------------------
+    @app.before_request
+    def _normalize_invoice_payer_values_once():
+        from flask import current_app
+        if getattr(app, "_invoice_payer_normalized", False):
+            return
+        try:
+            fixed_insurance = db.session.execute(
+                text("UPDATE invoice SET payer_type = 'Insurance' WHERE lower(payer_type) = 'insurance'")
+            ).rowcount or 0
+            fixed_cash = db.session.execute(
+                text("UPDATE invoice SET payer_type = 'Cash' WHERE lower(payer_type) = 'cash'")
+            ).rowcount or 0
+            if fixed_insurance or fixed_cash:
+                db.session.commit()
+                current_app.logger.info(
+                    f"Normalized invoice payer_type values (Insurance={fixed_insurance}, Cash={fixed_cash})"
+                )
+            else:
+                db.session.rollback()
+        except Exception as e:
+            db.session.rollback()
+            app.logger.warning(f"Invoice payer_type normalization skipped: {e}")
+        app._invoice_payer_normalized = True  # type: ignore[attr-defined]
 
     # -------------------------
     # Seed insurers once per process
