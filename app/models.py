@@ -326,6 +326,7 @@ class BillingQueue(db.Model):
     visit_id = db.Column(db.Integer, db.ForeignKey("visit.id"))
     status = db.Column(db.String(20), nullable=False, default="Open")
     added_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, index=True)
+    closed_at = db.Column(db.DateTime, nullable=True, index=True)
     added_by = db.Column(db.Integer, db.ForeignKey("user.id"))
 
     kind = db.Column(db.String(20), nullable=True, index=True)
