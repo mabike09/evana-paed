@@ -147,6 +147,36 @@ def create_app():
             app.logger.warning(f"Invoice payer_type normalization skipped: {e}")
         app._invoice_payer_normalized = True  # type: ignore[attr-defined]
 
+
+    def _ensure_billing_queue_closed_at_once():
+        from flask import current_app
+        if getattr(app, "_billing_queue_closed_at_checked", False):
+            return
+        try:
+            dialect = db.engine.dialect.name
+            if dialect == "sqlite":
+                cols = db.session.execute(text("PRAGMA table_info(billing_queue)")).fetchall()
+                col_names = {str(row[1]).lower() for row in cols}
+                if "closed_at" not in col_names:
+                    db.session.execute(text("ALTER TABLE billing_queue ADD COLUMN closed_at DATETIME"))
+                    db.session.commit()
+                    current_app.logger.info("Auto-added missing billing_queue.closed_at column")
+                else:
+                    db.session.rollback()
+                db.session.execute(text("CREATE INDEX IF NOT EXISTS ix_billing_queue_closed_at ON billing_queue(closed_at)"))
+                db.session.commit()
+            app._billing_queue_closed_at_checked = True  # type: ignore[attr-defined]
+        except Exception as e:
+            db.session.rollback()
+            app.logger.warning(f"billing_queue.closed_at schema check skipped: {e}")
+
+    with app.app_context():
+        _ensure_billing_queue_closed_at_once()
+
+    @app.before_request
+    def _ensure_billing_queue_closed_at_before_request():
+        _ensure_billing_queue_closed_at_once()
+
     # -------------------------
     # Seed insurers once per process
     # -------------------------
