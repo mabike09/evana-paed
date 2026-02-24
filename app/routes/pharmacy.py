@@ -134,7 +134,7 @@ def pharmacy_dashboard():
         selected=selected,
         selected_invoice=selected_invoice,
         paid_drug_lines=paid_drug_lines,
-        selected_is_insurance=((getattr(selected_invoice, "payer_type", "") or "").strip().lower() == "insurance") if selected_invoice else False,
+        selected_is_insurance=(_invoice_payer_type(selected_invoice, selected) == "insurance") if selected else False,
     )
 
 
@@ -269,6 +269,10 @@ def pharmacy_send_to_billing(q_id):
 def pharmacy_prepare_invoice(q_id):
     q = BillingQueue.query.get_or_404(q_id)
     inv = _ensure_open_invoice(q.patient_id, q.visit_id)
+
+    if not (getattr(inv, "payer_type", "") or "").strip():
+        inv.payer_type = _invoice_payer_type(inv, q)
+
     db.session.commit()
 
     return redirect(
