@@ -4,6 +4,7 @@ from datetime import datetime
 from flask import Blueprint, render_template, request, redirect, url_for, flash, abort
 from flask_login import login_required, current_user
 from sqlalchemy import func
+from sqlalchemy.orm import load_only
 
 from ..extensions import db
 from app.permissions import roles_required
@@ -124,7 +125,19 @@ def pharmacy_dashboard():
     active_q_id = request.args.get("queue_id", type=int)
 
     queue = (
-        BillingQueue.query.filter_by(status="Open")
+        BillingQueue.query.options(
+            load_only(
+                BillingQueue.id,
+                BillingQueue.patient_id,
+                BillingQueue.visit_id,
+                BillingQueue.status,
+                BillingQueue.added_at,
+                BillingQueue.added_by,
+                BillingQueue.kind,
+                BillingQueue.description,
+            )
+        )
+        .filter_by(status="Open")
         .filter(BillingQueue.kind == "PHARMACY")
         .order_by(BillingQueue.added_at.asc())
         .all()
@@ -172,7 +185,9 @@ def pharmacy_queue_clear(q_id):
     q.status = "Closed"
     if hasattr(q, "description"):
         base = (q.description or "").strip()
-        q.description = f"{base} | Cleared from pharmacy queue" if base else "Cleared from pharmacy queue"
+        cleared_stamp = datetime.utcnow().replace(microsecond=0).isoformat() + "Z"
+        note = f"Cleared from pharmacy queue @{cleared_stamp}"
+        q.description = f"{base} | {note}" if base else note
 
     db.session.commit()
     flash("Patient removed from pharmacy queue.", "success")
@@ -262,6 +277,11 @@ def pharmacy_dispense(q_id):
 def pharmacy_send_to_billing(q_id):
     q = BillingQueue.query.get_or_404(q_id)
     q.status = "Closed"
+    if hasattr(q, "description"):
+        base = (q.description or "").strip()
+        moved_stamp = datetime.utcnow().replace(microsecond=0).isoformat() + "Z"
+        note = f"Closed in pharmacy (sent to billing) @{moved_stamp}"
+        q.description = f"{base} | {note}" if base else note
 
     exists = (
         BillingQueue.query.filter_by(visit_id=q.visit_id, status="Open")

@@ -147,6 +147,7 @@ def create_app():
             app.logger.warning(f"Invoice payer_type normalization skipped: {e}")
         app._invoice_payer_normalized = True  # type: ignore[attr-defined]
 
+
     # -------------------------
     # Seed insurers once per process
     # -------------------------

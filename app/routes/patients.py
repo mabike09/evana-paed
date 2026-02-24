@@ -6,6 +6,7 @@ from flask import Blueprint, render_template, request, redirect, url_for, flash,
 from flask_login import login_required, current_user
 from sqlalchemy import or_, cast
 from sqlalchemy.types import String
+from sqlalchemy.orm import load_only
 
 from ..extensions import db
 from ..permissions import roles_required
@@ -914,7 +915,18 @@ def patients_list():
         for vv in visits:
             latest_visit_by_patient.setdefault(vv.patient_id, vv)
 
-    open_q_query = BillingQueue.query.filter_by(status="Open")
+    open_q_query = BillingQueue.query.options(
+        load_only(
+            BillingQueue.id,
+            BillingQueue.patient_id,
+            BillingQueue.visit_id,
+            BillingQueue.status,
+            BillingQueue.added_at,
+            BillingQueue.added_by,
+            BillingQueue.kind,
+            BillingQueue.description,
+        )
+    ).filter_by(status="Open")
     if hasattr(BillingQueue, "kind"):
         open_q_query = open_q_query.filter(BillingQueue.kind == "BILLING")
     open_q = open_q_query.order_by(BillingQueue.added_at.asc()).all()
@@ -1456,6 +1468,7 @@ def visit_close_and_bill(visit_id):
         has_procedures = False
 
     # Close any open queue entries that should no longer be active
+    now = datetime.utcnow()
     try:
         open_entries = BillingQueue.query.filter_by(visit_id=v.id, status="Open").all()
         for e in open_entries:
@@ -1478,7 +1491,7 @@ def visit_close_and_bill(visit_id):
         else:
             _enqueue_billing(v.patient_id, v.id, note=note)
 
-    _safe_setattr(v, "closed_at", datetime.utcnow())
+    _safe_setattr(v, "closed_at", now)
     _safe_setattr(v, "status", "Closed")
 
     db.session.commit()
