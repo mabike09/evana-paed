@@ -153,7 +153,7 @@ def create_app():
         if getattr(app, "_billing_queue_closed_at_checked", False):
             return
         try:
-            dialect = db.engine.dialect.name
+              dialect = db.engine.dialect.name
             if dialect == "sqlite":
                 cols = db.session.execute(text("PRAGMA table_info(billing_queue)")).fetchall()
                 col_names = {str(row[1]).lower() for row in cols}

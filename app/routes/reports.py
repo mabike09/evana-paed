@@ -8,7 +8,7 @@ import re
 from flask import Blueprint, Response, render_template, request
 from flask_login import login_required
 from ..permissions import roles_required
-from ..models import BillingQueue, DispenseTxn, Invoice, InvoiceLine, Item, Patient, Payment, Visit
+from ..models import BillingQueue, Invoice, InvoiceLine, Item, Patient, Payment, Visit
 
 bp = Blueprint("reports", __name__)
 
@@ -133,11 +133,6 @@ def reports_dashboard():
     queue_by_visit = defaultdict(list)
     for entry in queue_entries:
         queue_by_visit[entry.visit_id].append(entry)
-
-    dispense_by_visit = defaultdict(list)
-    for txn in DispenseTxn.query.filter(DispenseTxn.when >= start_dt, DispenseTxn.when < end_dt).all():
-        if txn.visit_id:
-            dispense_by_visit[txn.visit_id].append(txn)
 
     visit_ids = [v.id for v in visits_in_range]
     invoice_lines = InvoiceLine.query.join(Invoice, Invoice.id == InvoiceLine.invoice_id).filter(Invoice.visit_id.in_(visit_ids)).all() if visit_ids else []
