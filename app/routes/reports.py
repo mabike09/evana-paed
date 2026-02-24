@@ -156,12 +156,18 @@ def reports_dashboard():
             continue
 
         if visit.id in drug_visits:
-            pharmacy_clears = [
-                _extract_pharmacy_clear_ts(getattr(q, "description", ""))
-                for q in visit_queue
-                if (q.kind or "").upper() == "PHARMACY"
-            ]
-            pharmacy_clears = [ts for ts in pharmacy_clears if ts]
+            pharmacy_clears = []
+            for q in visit_queue:
+                if (q.kind or "").upper() != "PHARMACY":
+                    continue
+                q_closed = getattr(q, "closed_at", None)
+                if q_closed:
+                    pharmacy_clears.append(q_closed)
+                    continue
+                parsed = _extract_pharmacy_clear_ts(getattr(q, "description", ""))
+                if parsed:
+                    pharmacy_clears.append(parsed)
+
             if pharmacy_clears:
                 end_ts = max(pharmacy_clears)
             else:

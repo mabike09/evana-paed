@@ -266,6 +266,8 @@ def pharmacy_dispense(q_id):
 def pharmacy_send_to_billing(q_id):
     q = BillingQueue.query.get_or_404(q_id)
     q.status = "Closed"
+    if hasattr(q, "closed_at"):
+        q.closed_at = datetime.utcnow()
     if hasattr(q, "description"):
         base = (q.description or "").strip()
         moved_stamp = datetime.utcnow().replace(microsecond=0).isoformat() + "Z"
