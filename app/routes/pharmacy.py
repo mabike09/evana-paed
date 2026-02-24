@@ -270,5 +270,11 @@ def pharmacy_prepare_invoice(q_id):
     q = BillingQueue.query.get_or_404(q_id)
     inv = _ensure_open_invoice(q.patient_id, q.visit_id)
     db.session.commit()
-    flash("Invoice is ready. You can add drugs and dispense from pharmacy.", "success")
-    return redirect(url_for("pharmacy.pharmacy_dashboard", queue_id=q.id))
+
+    return redirect(
+        url_for(
+            "billing.invoice_edit",
+            invoice_id=inv.id,
+            next=url_for("pharmacy.pharmacy_dashboard", queue_id=q.id),
+        )
+    )
