@@ -1462,6 +1462,8 @@ def visit_close_and_bill(visit_id):
         for e in open_entries:
             if (getattr(e, "kind", "") or "").upper() in {"DOCTOR", "LAB", "TRIAGE"}:
                 e.status = "Closed"
+                if hasattr(e, "closed_at"):
+                    e.closed_at = now
     except Exception:
         pass
 
