@@ -3,6 +3,7 @@ from collections import defaultdict
 from datetime import datetime, timedelta
 from decimal import Decimal
 from io import BytesIO
+import re
 
 from flask import Blueprint, Response, render_template, request
 from flask_login import login_required
@@ -60,6 +61,20 @@ def _contains_any(text, keywords):
         return False
     lowered = text.lower()
     return any(keyword in lowered for keyword in keywords)
+
+
+def _extract_pharmacy_clear_ts(description):
+    if not description:
+        return None
+    m = re.search(r"Cleared from pharmacy queue\s*@([0-9T:\-]+Z)", description)
+    if not m:
+        m = re.search(r"Closed in pharmacy \(sent to billing\)\s*@([0-9T:\-]+Z)", description)
+    if not m:
+        return None
+    try:
+        return datetime.strptime(m.group(1), "%Y-%m-%dT%H:%M:%SZ")
+    except ValueError:
+        return None
 
 
 @bp.route("/reports")
@@ -142,10 +157,16 @@ def reports_dashboard():
 
         if visit.id in drug_visits:
             pharmacy_clears = [
-                q.closed_at for q in visit_queue
-                if (q.kind or "").upper() == "PHARMACY" and getattr(q, "closed_at", None)
+                _extract_pharmacy_clear_ts(getattr(q, "description", ""))
+                for q in visit_queue
+                if (q.kind or "").upper() == "PHARMACY"
             ]
-            end_ts = max(pharmacy_clears) if pharmacy_clears else visit.closed_at
+            pharmacy_clears = [ts for ts in pharmacy_clears if ts]
+            if pharmacy_clears:
+                end_ts = max(pharmacy_clears)
+            else:
+                clears = [d.when for d in dispense_by_visit.get(visit.id, []) if d.when]
+                end_ts = max(clears) if clears else visit.closed_at
         else:
             end_ts = visit.closed_at
 
