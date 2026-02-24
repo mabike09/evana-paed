@@ -3,6 +3,7 @@ from datetime import datetime
 
 from flask import Blueprint, render_template, request, redirect, url_for, flash, abort
 from flask_login import login_required, current_user
+from sqlalchemy import func
 
 from ..extensions import db
 from app.permissions import roles_required
@@ -25,16 +26,33 @@ def _invoice_is_fully_paid(inv: Invoice | None) -> bool:
 
 
 def _invoice_payer_type(inv: Invoice | None, queue_entry: BillingQueue | None = None) -> str:
-    payer_type = (getattr(inv, "payer_type", "") or "").strip().lower() if inv else ""
-    if payer_type:
-        return payer_type
+    payer_type = (getattr(inv, "payer_type", "") or "").strip() if inv else ""
 
     patient = getattr(queue_entry, "patient", None) if queue_entry else None
     insurance_provider = (getattr(patient, "insurance_provider", "") or "").strip().lower() if patient else ""
-    if insurance_provider and insurance_provider != "cash":
-        return "insurance"
-    return "cash"
+    queue_indicates_insurance = bool(insurance_provider and insurance_provider != "cash")
 
+    payer_type_lc = payer_type.lower()
+    if queue_indicates_insurance and payer_type_lc in {"", "cash"}:
+        return "Insurance"
+    if payer_type_lc == "insurance":
+        return "Insurance"
+    if payer_type_lc == "cash":
+        return "Cash"
+    return "Insurance" if queue_indicates_insurance else "Cash"
+
+
+
+def _normalize_invoice_payer_types_for_context(patient_id: int, visit_id: int | None) -> None:
+    q = _invoice_query_for_context(patient_id, visit_id)
+    q.filter(func.lower(Invoice.payer_type) == "insurance").update(
+        {Invoice.payer_type: "Insurance"},
+        synchronize_session=False,
+    )
+    q.filter(func.lower(Invoice.payer_type) == "cash").update(
+        {Invoice.payer_type: "Cash"},
+        synchronize_session=False,
+    )
 
 def _invoice_is_dispense_eligible(inv: Invoice | None, queue_entry: BillingQueue | None = None) -> bool:
     if not inv:
@@ -42,7 +60,7 @@ def _invoice_is_dispense_eligible(inv: Invoice | None, queue_entry: BillingQueue
     if _invoice_is_fully_paid(inv):
         return True
     # Insurance bills are verified/closed in Billing before dispensing.
-    return _invoice_payer_type(inv, queue_entry) == "insurance"
+    return _invoice_payer_type(inv, queue_entry).lower() == "insurance"
 
 
 def _drug_rows_for_invoice(inv: Invoice):
@@ -80,6 +98,7 @@ def _invoice_query_for_context(patient_id: int, visit_id: int | None):
     return q
 
 def _ensure_open_invoice(patient_id: int, visit_id: int | None) -> Invoice:
+    _normalize_invoice_payer_types_for_context(patient_id, visit_id)
     inv = _invoice_query_for_context(patient_id, visit_id).order_by(Invoice.id.desc()).first()
     if inv:
         return inv
@@ -120,6 +139,7 @@ def pharmacy_dashboard():
     selected_invoice = None
     paid_drug_lines = []
     if selected:
+        _normalize_invoice_payer_types_for_context(selected.patient_id, getattr(selected, "visit_id", None))
         selected_invoice = _invoice_query_for_context(
             selected.patient_id,
             getattr(selected, "visit_id", None),
@@ -134,7 +154,7 @@ def pharmacy_dashboard():
         selected=selected,
         selected_invoice=selected_invoice,
         paid_drug_lines=paid_drug_lines,
-        selected_is_insurance=((getattr(selected_invoice, "payer_type", "") or "").strip().lower() == "insurance") if selected_invoice else False,
+        selected_is_insurance=(_invoice_payer_type(selected_invoice, selected) == "Insurance") if selected else False,
     )
 
 
@@ -166,6 +186,7 @@ def pharmacy_dispense(q_id):
     if (getattr(q, "kind", "") or "").upper() != "PHARMACY" or (getattr(q, "status", "") or "") != "Open":
         abort(400)
 
+    _normalize_invoice_payer_types_for_context(q.patient_id, getattr(q, "visit_id", None))
     inv = _invoice_query_for_context(q.patient_id, getattr(q, "visit_id", None)).order_by(Invoice.id.desc()).first()
     if not _invoice_is_dispense_eligible(inv, q):
         flash("Invoice must be paid or insurance-verified before dispensing.", "warning")
@@ -269,6 +290,17 @@ def pharmacy_send_to_billing(q_id):
 def pharmacy_prepare_invoice(q_id):
     q = BillingQueue.query.get_or_404(q_id)
     inv = _ensure_open_invoice(q.patient_id, q.visit_id)
+
+    inferred_payer_type = _invoice_payer_type(inv, q)
+    if (getattr(inv, "payer_type", "") or "").strip() != inferred_payer_type:
+        inv.payer_type = inferred_payer_type
+
     db.session.commit()
-    flash("Invoice is ready. You can add drugs and dispense from pharmacy.", "success")
-    return redirect(url_for("pharmacy.pharmacy_dashboard", queue_id=q.id))
+
+    return redirect(
+        url_for(
+            "billing.invoice_edit",
+            invoice_id=inv.id,
+            next=url_for("pharmacy.pharmacy_dashboard", queue_id=q.id),
+        )
+    )
