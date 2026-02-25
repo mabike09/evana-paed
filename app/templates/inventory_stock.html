@@ -83,6 +83,24 @@
   <div class="small text-muted mb-2">
     {% if book %} Viewing price book: <strong>{{ book.name }}</strong> ({{ payer_name }}) {% else %} No price book selected. {% endif %}
   </div>
+  {% if current_user.role == 'admin' %}
+    <form method="get" action="{{ url_for('inventory.inventory_stock') }}" class="d-flex align-items-center gap-2 mb-2">
+      <input type="hidden" name="mode" value="pricebook">
+      <input type="hidden" name="payer" value="{{ payer_name }}">
+      {% if q %}
+        <input type="hidden" name="q" value="{{ q }}">
+      {% endif %}
+      <label for="pricebook_select" class="small text-muted mb-0">Price book:</label>
+      <select id="pricebook_select" name="book_id" class="form-select form-select-sm w-auto" onchange="this.form.submit()">
+        {% for (b, payer) in books %}
+          {% if payer == payer_name %}
+            <option value="{{ b.id }}" {{ 'selected' if book and b.id == book.id else '' }}>{{ b.name }}{% if b.effective_date %} • {{ b.effective_date }}{% endif %}</option>
+          {% endif %}
+        {% endfor %}
+      </select>
+      <button class="btn btn-sm btn-outline-secondary" type="submit">View</button>
+    </form>
+  {% endif %}
   {% if current_user.role == 'admin' and book %}
     <form method="post" action="{{ url_for('inventory.pricebook_prices_save', book_id=book.id) }}">
   {% endif %}
