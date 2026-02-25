@@ -64,6 +64,73 @@ def items_prices_save():
     flash(f"Item prices saved. {changed} change(s).", "success")
     return redirect(url_for("inventory.inventory_stock"))
 
+
+@bp.route("/inventory/pricebook/<int:book_id>/save", methods=["POST"])
+@login_required
+@roles_required("admin")
+def pricebook_prices_save(book_id):
+    """Allow admins to update sell/buy prices for a selected price book."""
+    book = PriceBook.query.get_or_404(book_id)
+    changed = 0
+
+    rows = PriceItem.query.filter(PriceItem.pricebook_id == book.id).all()
+    for row in rows:
+        sell_key = f"sell_{row.id}"
+        buy_key = f"buy_{row.id}"
+
+        if sell_key in request.form:
+            raw_sell = (request.form.get(sell_key) or "").strip()
+            if raw_sell:
+                try:
+                    sell_price = Decimal(raw_sell)
+                except Exception:
+                    flash(f"Invalid sell price for {row.item_name}.", "warning")
+                    return redirect(
+                        url_for(
+                            "inventory.inventory_stock",
+                            mode="pricebook",
+                            payer=book.payer.name,
+                            book_id=book.id,
+                        )
+                    )
+                if row.sell_price != sell_price:
+                    row.sell_price = sell_price
+                    changed += 1
+
+        if buy_key in request.form:
+            raw_buy = (request.form.get(buy_key) or "").strip()
+            if not raw_buy:
+                if row.buy_price is not None:
+                    row.buy_price = None
+                    changed += 1
+            else:
+                try:
+                    buy_price = Decimal(raw_buy)
+                except Exception:
+                    flash(f"Invalid buy price for {row.item_name}.", "warning")
+                    return redirect(
+                        url_for(
+                            "inventory.inventory_stock",
+                            mode="pricebook",
+                            payer=book.payer.name,
+                            book_id=book.id,
+                        )
+                    )
+                if row.buy_price != buy_price:
+                    row.buy_price = buy_price
+                    changed += 1
+
+    db.session.commit()
+    flash(f"Updated {changed} price value(s) for {book.name}.", "success")
+    return redirect(
+        url_for(
+            "inventory.inventory_stock",
+            mode="pricebook",
+            payer=book.payer.name,
+            book_id=book.id,
+        )
+    )
+
 @bp.route("/inventory/items/new", methods=["GET", "POST"])
 @login_required
 @roles_required("admin")
@@ -142,29 +209,32 @@ def inventory_stock():
     # Resolve book for pricebook/merged modes
     book = None
     if mode in ("pricebook", "merged"):
+        requested_payer = payer_name
         if book_id:
-            # If a specific book id is given, prefer it
-            book = (
-                db.session.query(PriceBook)
-                .filter(PriceBook.id == book_id)
-                .first()
-            )
-            if book:
-                # Refresh payer_name from DB to keep the UI consistent
-                payer_row = db.session.query(Payer).filter(Payer.id == book.payer_id).first()
-                if payer_row:
+            # Keep requested book only when it belongs to the requested payer.
+            candidate = db.session.query(PriceBook).filter(PriceBook.id == book_id).first()
+            if candidate:
+                payer_row = db.session.query(Payer).filter(Payer.id == candidate.payer_id).first()
+                if payer_row and (payer_row.name or "").strip().lower() == requested_payer.strip().lower():
+                    book = candidate
                     payer_name = payer_row.name
+
         if not book:
             # Fall back to "latest book for (case-insensitive, trimmed) payer name"
             qb = (
                 db.session.query(PriceBook)
                 .join(Payer, PriceBook.payer_id == Payer.id)
-                .filter(func.lower(func.trim(Payer.name)) == payer_name.lower())
+                .filter(func.lower(func.trim(Payer.name)) == requested_payer.strip().lower())
                 .order_by(PriceBook.effective_date.desc().nullslast(), PriceBook.id.desc())
             )
             book = qb.first()
-            if not book:
-                flash(f"No price book found for payer '{payer_name}'.", "warning")
+            if book:
+                payer_row = db.session.query(Payer).filter(Payer.id == book.payer_id).first()
+                if payer_row:
+                    payer_name = payer_row.name
+            else:
+                flash(f"No price book found for payer '{requested_payer}'.", "warning")
+
 
     # Build data
     items = []
