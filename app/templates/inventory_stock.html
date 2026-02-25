@@ -83,6 +83,9 @@
   <div class="small text-muted mb-2">
     {% if book %} Viewing price book: <strong>{{ book.name }}</strong> ({{ payer_name }}) {% else %} No price book selected. {% endif %}
   </div>
+  {% if current_user.role == 'admin' and book %}
+    <form method="post" action="{{ url_for('inventory.pricebook_prices_save', book_id=book.id) }}">
+  {% endif %}
   <div class="table-responsive">
     <table class="table table-sm table-striped">
       <thead><tr>
@@ -96,13 +99,45 @@
           <td>{{ pi.item_code or '' }}</td>
           <td>{{ pi.item_name }}</td>
           <td>{{ pi.unit or '' }}</td>
-          <td class="text-end">{{ '%.0f' % pi.sell_price if pi.sell_price is not none else '' }}</td>
-          <td class="text-end">{{ '%.0f' % pi.buy_price if pi.buy_price is not none else '' }}</td>
+          <td class="text-end">
+            {% if current_user.role == 'admin' and book %}
+              <input
+                type="number"
+                name="sell_{{ pi.id }}"
+                step="0.01"
+                min="0"
+                class="form-control form-control-sm text-end"
+                value="{{ '%.2f' % pi.sell_price if pi.sell_price is not none else '' }}"
+              >
+            {% else %}
+              {{ '%.0f' % pi.sell_price if pi.sell_price is not none else '' }}
+            {% endif %}
+          </td>
+          <td class="text-end">
+            {% if current_user.role == 'admin' and book %}
+              <input
+                type="number"
+                name="buy_{{ pi.id }}"
+                step="0.01"
+                min="0"
+                class="form-control form-control-sm text-end"
+                value="{{ '%.2f' % pi.buy_price if pi.buy_price is not none else '' }}"
+              >
+            {% else %}
+              {{ '%.0f' % pi.buy_price if pi.buy_price is not none else '' }}
+            {% endif %}
+          </td>
         </tr>
         {% endfor %}
       </tbody>
     </table>
   </div>
+  {% if current_user.role == 'admin' and book %}
+    <div class="mt-2">
+      <button class="btn btn-sm btn-primary" type="submit">Save Price Book Changes</button>
+    </div>
+    </form>
+  {% endif %}
 
 {% elif mode == 'merged' %}
   <div class="small text-muted mb-2">
