@@ -166,16 +166,25 @@ def api_lookup_drugs():
                 if getattr(r, "item_code", None):
                     item = Item.query.filter(Item.sku == r.item_code).first()
                 if not item:
-                    item = Item.query.filter(Item.name.ilike(name)).first()
+                    item = Item.query.filter(func.lower(func.trim(Item.name)) == func.lower(func.trim(name))).first()
             except Exception:
                 item = None
 
+            # Only return suggestions that can be linked to inventory stock.
+            # Showing unmapped rows causes a false-positive UX where users pick
+            # from suggestions but still fail submit validation due to blank id.
+            if not item:
+                continue
+
             out.append({
-                "id": item.id if item else "",
+                "id": item.id,
                 "name": name,
                 "price": price,
-                "qty": int(getattr(item, "current_qty", 0) or 0) if item else 0,
+                "qty": int(getattr(item, "current_qty", 0) or 0),
             })
+
+        if not out:
+            return _fallback_inventory()
 
         return jsonify(out)
 
