@@ -3,7 +3,7 @@ import logging
 import os
 from datetime import timedelta
 from flask import Flask
-from sqlalchemy import text
+from sqlalchemy import inspect, text
 from .extensions import db, migrate, login_manager, csrf
 from .utils import within_24h, has_endpoint
 from config import Config
@@ -170,5 +170,35 @@ def create_app():
             app.logger.warning(f"Insurer seed skipped: {e}")
         app._insurers_seeded = True  # type: ignore[attr-defined]
 
-    return app
+    # -------------------------
+    # Backfill legacy SQLite schema drift once per process
+    # -------------------------
+    @app.before_request
+    def _ensure_billing_queue_closed_at_once():
+        """
+        Some deployments have BillingQueue model code that expects `closed_at`
+        before the migration has been applied. Add it defensively to avoid 500s.
+        """
+        if getattr(app, "_billing_queue_closed_at_checked", False):
+            return
 
+        try:
+            insp = inspect(db.engine)
+            if not insp.has_table("billing_queue"):
+                return
+
+            col_names = {c.get("name") for c in insp.get_columns("billing_queue")}
+            if "closed_at" not in col_names:
+                db.session.execute(text("ALTER TABLE billing_queue ADD COLUMN closed_at DATETIME"))
+                db.session.execute(
+                    text("CREATE INDEX IF NOT EXISTS ix_billing_queue_closed_at ON billing_queue (closed_at)")
+                )
+                db.session.commit()
+                app.logger.warning("Added missing billing_queue.closed_at column at runtime.")
+        except Exception as e:
+            db.session.rollback()
+            app.logger.warning(f"billing_queue schema check skipped: {e}")
+        finally:
+            app._billing_queue_closed_at_checked = True  # type: ignore[attr-defined]
+
+    return app
