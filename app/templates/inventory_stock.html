@@ -21,16 +21,14 @@
     {% if mode in ['pricebook','merged'] %}
       <select name="payer" class="form-select form-select-sm me-2" onchange="this.form.submit()">
         {% set current = payer_name or 'Cash' %}
-        <option value="Cash" {{ 'selected' if current == 'Cash' else '' }}>Cash</option>
+        {% set seen = namespace(vals=[]) %}
         {% for (b, payer) in books %}
-          {% if payer != 'Cash' %}
-          <option value="{{ payer }}" {{ 'selected' if payer == current else '' }}>{{ payer }}</option>
+          {% if payer not in seen.vals %}
+            {% set _ = seen.vals.append(payer) %}
+            <option value="{{ payer }}" {{ 'selected' if payer == current else '' }}>{{ payer }}</option>
           {% endif %}
         {% endfor %}
       </select>
-      {% if book %}
-        <input type="hidden" name="book_id" value="{{ book.id }}">
-      {% endif %}
     {% endif %}
     <input class="form-control form-control-sm me-2" type="search" name="q" value="{{ q or '' }}" placeholder="Search">
     <button class="btn btn-sm btn-outline-secondary">Search</button>
