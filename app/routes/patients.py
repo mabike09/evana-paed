@@ -142,8 +142,13 @@ def api_lookup_drugs():
                 PriceItem.query
                 .filter(PriceItem.pricebook_id == book_id)
                 # be tolerant: some DBs store 'Drug', 'DRUG', etc.
-                .filter(func.lower(PriceItem.item_type) == "drug")
-                .filter(PriceItem.item_name.ilike(f"%{q}%"))
+                .filter(func.lower(func.trim(func.coalesce(PriceItem.item_type, ""))) == "drug")
+                .filter(
+                    or_(
+                        PriceItem.item_name.ilike(f"%{q}%"),
+                        PriceItem.item_code.ilike(f"%{q}%"),
+                    )
+                )
                 .order_by(PriceItem.item_name.asc())
                 .limit(20)
                 .all()
@@ -170,10 +175,13 @@ def api_lookup_drugs():
             except Exception:
                 item = None
 
-            # Only return suggestions that can be linked to inventory stock.
-            # Showing unmapped rows causes a false-positive UX where users pick
-            # from suggestions but still fail submit validation due to blank id.
             if not item:
+                out.append({
+                    "id": "",
+                    "name": name,
+                    "price": price,
+                    "qty": 0,
+                })
                 continue
 
             out.append({
@@ -813,7 +821,7 @@ def _drug_unit_price(p: Patient, item_id: int | None, drug_name: str = "") -> De
 
             q = PriceItem.query.filter_by(pricebook_id=book.id)
             if hasattr(PriceItem, "item_type"):
-                q = q.filter(PriceItem.item_type == "drug")
+                q = q.filter(func.lower(func.trim(func.coalesce(PriceItem.item_type, ""))) == "drug")
 
             # Match by code (sku) or name
             if inv_item and getattr(inv_item, "sku", None):
