@@ -112,28 +112,23 @@ def api_lookup_drugs():
     cash_pb = _cash_pricebook_id()
     book_id = book.id if book else cash_pb
 
-    def _fallback_inventory():
+    def _inventory_rows(limit=20):
         rows = (
             Item.query
             .filter(Item.name.ilike(f"%{q}%"))
             .order_by(Item.name.asc())
-            .limit(20)
+            .limit(limit)
             .all()
         )
-        # Prefer items marked as drugs; but if your items are not flagged yet,
-        # we still return matches so autocomplete works.
         out = []
         for r in rows:
-            if getattr(r, "is_drug", False) is False:
-                # keep non-drug matches but push them down by name ordering already
-                pass
             out.append({
                 "id": r.id,
                 "name": r.name,
                 "price": float(getattr(r, "sell_price", 0) or 0),
                 "qty": int(getattr(r, "current_qty", 0) or 0),
             })
-        return jsonify(out)
+        return out
 
     # Prefer matched price book entries for drugs, BUT return Inventory Item.id
     if book_id:
@@ -156,13 +151,11 @@ def api_lookup_drugs():
         except Exception:
             rows = []
 
-        # If the price book exists but has no drug rows, fall back to inventory.
-        if not rows:
-            return _fallback_inventory()
-
         out = []
+        seen = set()
         for r in rows:
             name = r.item_name
+            normalized_name = (name or "").strip().lower()
             price = float(getattr(r, "sell_price", 0) or 0)
 
             # map pricebook row -> inventory Item (so prescriptions link to stock)
@@ -182,6 +175,8 @@ def api_lookup_drugs():
                     "price": price,
                     "qty": 0,
                 })
+                if normalized_name:
+                    seen.add(normalized_name)
                 continue
 
             out.append({
@@ -190,13 +185,25 @@ def api_lookup_drugs():
                 "price": price,
                 "qty": int(getattr(item, "current_qty", 0) or 0),
             })
+            if normalized_name:
+                seen.add(normalized_name)
+
+        # Always merge in inventory matches so items absent from price books
+        # still show up in autocomplete/search (e.g., newly added drugs).
+        for inv in _inventory_rows(limit=20):
+            inv_name = (inv.get("name") or "").strip().lower()
+            if inv_name and inv_name in seen:
+                continue
+            out.append(inv)
+            if inv_name:
+                seen.add(inv_name)
 
         if not out:
-            return _fallback_inventory()
+            return jsonify([])
 
-        return jsonify(out)
+        return jsonify(out[:20])
 
-    return _fallback_inventory()
+    return jsonify(_inventory_rows(limit=20))
 
 
 
