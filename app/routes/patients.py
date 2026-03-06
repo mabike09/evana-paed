@@ -169,14 +169,15 @@ def api_lookup_drugs():
                 item = None
 
             if not item:
+                # Keep unmatched price-book rows visible (for pricing context), but do NOT
+                # mark them as seen. This allows the subsequent inventory merge to add a
+                # stock-linked suggestion for the same name when one exists.
                 out.append({
                     "id": "",
                     "name": name,
                     "price": price,
                     "qty": 0,
                 })
-                if normalized_name:
-                    seen.add(normalized_name)
                 continue
 
             out.append({
