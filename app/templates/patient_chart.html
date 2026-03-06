@@ -243,8 +243,13 @@
       const procIdInput = document.getElementById('procedure-id');
 
       // cache by displayed name -> id/price
-      let drugCache = {}; // name -> {id, price}
+      let drugCache = {}; // raw name -> {id, price}
+      let drugCacheByKey = {}; // normalized name -> {id, price}
       let procCache = {}; // name -> {id, price}
+
+      function normDrugName(v){
+        return (v || '').trim().toLowerCase();
+      }
 
       function debounce(fn, wait){
         let t;
@@ -271,14 +276,23 @@
         if(!q || q.length < 2){
           drugList.innerHTML = '';
           drugCache = {};
+          drugCacheByKey = {};
           return;
         }
         const data = await fetchJSON(`${DRUG_LOOKUP_URL}?q=${encodeURIComponent(q)}&patient_id=${encodeURIComponent(PATIENT_ID)}`);
         drugList.innerHTML = '';
         drugCache = {};
+        drugCacheByKey = {};
         data.forEach(it => {
           // expected from API: {id, name, price}
-          drugCache[it.name] = { id: it.id, price: it.price };
+          const key = normDrugName(it.name);
+          const candidate = { id: it.id, price: it.price };
+          drugCache[it.name] = candidate;
+          const existing = drugCacheByKey[key];
+          // Prefer inventory-linked suggestion (has id) for same display text.
+          if(!existing || (candidate.id && !existing.id)){
+            drugCacheByKey[key] = candidate;
+          }
           const opt = document.createElement('option');
           opt.value = it.name;
           drugList.appendChild(opt);
@@ -313,7 +327,7 @@
           // This avoids cases where users pick from the datalist but 'change' doesn't fire (browser-specific).
           const row = e.target.closest('.drug-row');
           const hid = row ? row.querySelector('.drug-id') : null;
-          const hit = drugCache[e.target.value];
+          const hit = drugCache[e.target.value] || drugCacheByKey[normDrugName(e.target.value)];
           if(hid) hid.value = hit ? hit.id : '';
         }
         if(e.target === procInput){
@@ -326,7 +340,7 @@
         if(e.target.classList && e.target.classList.contains('drug-name')){
           const row = e.target.closest('.drug-row');
           const hid = row ? row.querySelector('.drug-id') : null;
-          const hit = drugCache[e.target.value];
+          const hit = drugCache[e.target.value] || drugCacheByKey[normDrugName(e.target.value)];
           if(hid) hid.value = hit ? hit.id : '';
         }
         if(e.target === procInput){
@@ -360,7 +374,7 @@
           drugForm.querySelectorAll('#drug-rows .drug-row').forEach(row => {
             const name = (row.querySelector('.drug-name')?.value || '').trim();
             const hid  = row.querySelector('.drug-id');
-            const hit  = drugCache[name];
+            const hit  = drugCache[name] || drugCacheByKey[normDrugName(name)];
             if(hid && hit && !hid.value) hid.value = hit.id;
             // If name provided but no id, it's not linked to inventory
             if(name && hid && !hid.value){
