@@ -159,24 +159,21 @@ def api_lookup_drugs():
             price = float(getattr(r, "sell_price", 0) or 0)
 
             # map pricebook row -> inventory Item (so prescriptions link to stock)
-            item = None
-            try:
-                if getattr(r, "item_code", None):
-                    item = Item.query.filter(Item.sku == r.item_code).first()
-                if not item:
-                    item = Item.query.filter(func.lower(func.trim(Item.name)) == func.lower(func.trim(name))).first()
-            except Exception:
-                item = None
+            item = _resolve_inventory_item_for_drug(
+                drug_name=name,
+                item_code=getattr(r, "item_code", "") or "",
+            )
 
             if not item:
+                # Keep unmatched price-book rows visible (for pricing context), but do NOT
+                # mark them as seen. This allows the subsequent inventory merge to add a
+                # stock-linked suggestion for the same name when one exists.
                 out.append({
                     "id": "",
                     "name": name,
                     "price": price,
                     "qty": 0,
                 })
-                if normalized_name:
-                    seen.add(normalized_name)
                 continue
 
             out.append({
@@ -197,6 +194,26 @@ def api_lookup_drugs():
             out.append(inv)
             if inv_name:
                 seen.add(inv_name)
+
+        # Deduplicate by normalized display name, preferring entries linked to inventory ids.
+        deduped = {}
+        ordered_names = []
+        for row in out:
+            key = (row.get("name") or "").strip().lower()
+            if not key:
+                continue
+            existing = deduped.get(key)
+            if existing is None:
+                deduped[key] = row
+                ordered_names.append(key)
+                continue
+
+            existing_has_id = bool(existing.get("id"))
+            row_has_id = bool(row.get("id"))
+            if row_has_id and not existing_has_id:
+                deduped[key] = row
+
+        out = [deduped[k] for k in ordered_names]
 
         if not out:
             return jsonify([])
@@ -434,6 +451,37 @@ def _normalized_kind(proc_id=None, item_id=None):
     if proc_id:
         return "procedure"
     return "other"
+
+
+def _resolve_inventory_item_for_drug(drug_name: str = "", item_code: str = ""):
+    """Best-effort map of a drug label/code to an inventory Item."""
+    if Item is None:
+        return None
+
+    name = (drug_name or "").strip()
+    code = (item_code or "").strip()
+
+    try:
+        if code:
+            item = Item.query.filter(Item.sku == code).first()
+            if item:
+                return item
+
+        if name:
+            item = Item.query.filter(func.lower(func.trim(Item.name)) == func.lower(func.trim(name))).first()
+            if item:
+                return item
+
+            return (
+                Item.query
+                .filter(Item.name.ilike(name))
+                .order_by(Item.id.desc())
+                .first()
+            )
+    except Exception:
+        return None
+
+    return None
 
 
 def lookup_test_price(name: str):
