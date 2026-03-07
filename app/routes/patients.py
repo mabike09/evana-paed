@@ -1003,13 +1003,145 @@ def patients_list():
         open_q_query = open_q_query.filter(BillingQueue.kind == "BILLING")
     open_q = open_q_query.order_by(BillingQueue.added_at.asc()).all()
 
+    lab_tests_by_patient = {}
+    for patient in patients:
+        if _is_insurance_patient(patient):
+            continue
+        lab_tests_by_patient[patient.id] = _lab_catalog_for_patient(patient)
+
     return render_template(
         "patients_list.html",
         patients=patients,
         q=q,
         billing_queue=open_q,
         latest_visit_by_patient=latest_visit_by_patient,
+        lab_tests_by_patient=lab_tests_by_patient,
     )
+
+
+@bp.post("/patients/<int:patient_id>/send-to-lab")
+@login_required
+@roles_required("reception", "nurse", "admin")
+def patients_send_to_lab(patient_id):
+    p = Patient.query.get_or_404(patient_id)
+    if _is_insurance_patient(p):
+        flash("Send to Lab from patient list is only available for CASH clients.", "warning")
+        return redirect(url_for("patients.patients_list", q=request.args.get("q", "")))
+
+    raw_ids = request.form.getlist("lab_tests")
+    if not raw_ids:
+        flash("Select at least one lab test.", "warning")
+        return redirect(url_for("patients.patients_list", q=request.args.get("q", "")))
+
+    selected_ids = [int(x) for x in raw_ids if str(x).isdigit()]
+    if not selected_ids:
+        flash("Selected lab tests are invalid.", "danger")
+        return redirect(url_for("patients.patients_list", q=request.args.get("q", "")))
+
+    chosen = []
+    if PriceItem:
+        chosen = PriceItem.query.filter(PriceItem.id.in_(selected_ids)).all()
+
+    if InvoiceLine is None or LabOrder is None:
+        flash("Lab order/invoice models are not available in this deployment.", "danger")
+        return redirect(url_for("patients.patients_list", q=request.args.get("q", "")))
+
+    if not chosen:
+        flash("Selected lab tests not found in price book.", "danger")
+        return redirect(url_for("patients.patients_list", q=request.args.get("q", "")))
+
+    v = _get_or_create_open_visit(p.id)
+    inv = _get_or_create_invoice(p, v)
+
+    new_lines = []
+    for r in chosen:
+        name = (getattr(r, "item_name", None) or getattr(r, "item_code", "Lab Test"))
+
+        proc_id = None
+        if Procedure:
+            try:
+                qq = Procedure.query.filter(Procedure.name.ilike(name))
+                if hasattr(Procedure, "category"):
+                    qq = qq.filter(Procedure.category.ilike("lab"))
+                proc = qq.first()
+                proc_id = getattr(proc, "id", None) if proc else None
+            except Exception:
+                proc_id = None
+
+        if hasattr(r, "price"):
+            unit = Decimal(str(r.price or "0"))
+        elif hasattr(r, "sell_price"):
+            unit = Decimal(str(r.sell_price or "0"))
+        elif hasattr(r, "amount"):
+            unit = Decimal(str(r.amount or "0"))
+        else:
+            unit = Decimal("0")
+
+        ln = InvoiceLine()
+        if hasattr(ln, "invoice_id"):
+            ln.invoice_id = inv.id
+        if hasattr(ln, "kind"):
+            ln.kind = _normalized_kind(proc_id=proc_id)
+        if proc_id and hasattr(ln, "procedure_id"):
+            ln.procedure_id = proc_id
+        if hasattr(ln, "description"):
+            ln.description = name
+        if hasattr(ln, "qty"):
+            ln.qty = 1
+        if hasattr(ln, "unit_price"):
+            ln.unit_price = unit
+        if hasattr(ln, "line_total"):
+            ln.line_total = unit
+        if hasattr(ln, "price_item_id"):
+            ln.price_item_id = r.id
+
+        db.session.add(ln)
+        new_lines.append(ln)
+
+    try:
+        inv.amount = sum((l.line_total or Decimal("0")) for l in getattr(inv, "lines", new_lines))
+    except Exception:
+        inv.amount = (inv.amount or Decimal("0")) + sum(
+            (getattr(ln, "line_total", Decimal("0")) for ln in new_lines)
+        )
+
+    lo = LabOrder()
+    if hasattr(lo, "patient_id"):
+        lo.patient_id = p.id
+    if hasattr(lo, "visit_id"):
+        lo.visit_id = v.id
+    if hasattr(lo, "status"):
+        lo.status = "PendingPayment"
+    if hasattr(lo, "created_at"):
+        lo.created_at = datetime.utcnow()
+    if hasattr(lo, "created_by"):
+        lo.created_by = getattr(current_user, "id", None)
+
+    names = ", ".join([
+        (getattr(r, "item_name", None) or getattr(r, "item_code", "Lab Test"))
+        for r in chosen
+    ])
+    if hasattr(lo, "tests"):
+        lo.tests = names
+    elif hasattr(lo, "description"):
+        lo.description = f"Requested tests: {names}"
+
+    db.session.add(lo)
+    db.session.flush()
+
+    if LabOrderLine is not None:
+        for r in chosen:
+            tname = (getattr(r, "item_name", None) or getattr(r, "item_code", "Lab Test"))
+            db.session.add(LabOrderLine(order_id=lo.id, procedure_id=None, test_name=tname))
+
+    _enqueue_billing(p.id, v.id, note=f"Lab tests: {names}")
+
+    db.session.commit()
+    flash(
+        f"Added {len(chosen)} lab test(s). Patient sent to Billing first; Lab queue starts after full payment.",
+        "success",
+    )
+    return redirect(url_for("billing.patient_billing", patient_id=p.id))
 
 
 # ---------- Send to Lab (keeps visit open, auto-invoice) ----------
