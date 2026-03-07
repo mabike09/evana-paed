@@ -281,14 +281,13 @@ def lab_enter_results(order_id):
 
         db.session.commit()
         flash("Lab results saved successfully.", "success")
-        
-                # ------------------------------------------------------------
-        # ✅ If completed, move patient from LAB queue back to DOCTOR queue
+
+        # ------------------------------------------------------------
+        # If completed, clear LAB queue entries and close the visit.
         # ------------------------------------------------------------
         try:
             is_completed = (getattr(order, "status", None) == "Completed")
             if is_completed and BillingQueue is not None:
-                # 1) Close any open LAB queue entries for this visit/patient
                 q = BillingQueue.query.filter_by(status="Open")
                 if hasattr(BillingQueue, "kind"):
                     q = q.filter(BillingQueue.kind == "LAB")
@@ -298,43 +297,24 @@ def lab_enter_results(order_id):
                 else:
                     q = q.filter(BillingQueue.patient_id == order.patient_id)
 
-                lab_rows = q.all()
-                for row in lab_rows:
+                for row in q.all():
                     row.status = "Closed"
+                    if hasattr(row, "closed_at"):
+                        row.closed_at = datetime.utcnow()
 
-                # 2) Ensure we don't duplicate DOCTOR queue entries
-                q2 = BillingQueue.query.filter_by(status="Open")
-                if hasattr(BillingQueue, "kind"):
-                    q2 = q2.filter(BillingQueue.kind == "DOCTOR")
-
-                if getattr(order, "visit_id", None):
-                    q2 = q2.filter(BillingQueue.visit_id == order.visit_id)
-                else:
-                    q2 = q2.filter(BillingQueue.patient_id == order.patient_id)
-
-                already_in_doctor = q2.first() is not None
-
-                # 3) Add to DOCTOR queue if not already there
-                if not already_in_doctor:
-                    dq = BillingQueue()
-                    if hasattr(dq, "patient_id"): dq.patient_id = order.patient_id
-                    if hasattr(dq, "visit_id"):   dq.visit_id   = getattr(order, "visit_id", None)
-                    if hasattr(dq, "status"):     dq.status     = "Open"
-                    if hasattr(dq, "added_at"):   dq.added_at   = datetime.utcnow()
-                    if hasattr(dq, "added_by"):   dq.added_by   = getattr(current_user, "id", None)
-                    if hasattr(dq, "kind"):       dq.kind       = "DOCTOR"
-                    if hasattr(dq, "description"):dq.description = "Returned from Lab (results ready)"
-                    db.session.add(dq)
-
-                # 4) Update visit station (optional but recommended)
                 if Visit is not None and getattr(order, "visit_id", None):
                     v = Visit.query.get(order.visit_id)
-                    if v and hasattr(v, "current_station"):
-                        v.current_station = "DOCTOR"
+                    if v:
+                        if hasattr(v, "status"):
+                            v.status = "Closed"
+                        if hasattr(v, "closed_at"):
+                            v.closed_at = datetime.utcnow()
+                        if hasattr(v, "current_station"):
+                            v.current_station = "CLOSED"
 
                 db.session.commit()
         except Exception:
-            current_app.logger.exception("Failed to move patient back to DOCTOR queue after lab results")
+            current_app.logger.exception("Failed to close lab queue/visit after lab completion")
 
         # ✅ Stay on the same page instead of redirecting
         lines = LabOrderLine.query.filter_by(order_id=order.id).all()
