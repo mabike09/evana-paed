@@ -130,7 +130,7 @@
                     </button>
 
                     <div class="modal fade" id="labModal{{ p.id }}" tabindex="-1" aria-hidden="true">
-                      <div class="modal-dialog modal-dialog-scrollable">
+                      <div class="modal-dialog modal-lg modal-dialog-scrollable">
                         <div class="modal-content">
                           <form method="post" action="{{ url_for('patients.patients_send_to_lab', patient_id=p.id, q=request.args.get('q','')) }}">
                             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -140,7 +140,7 @@
                             </div>
                             <div class="modal-body">
                               <p class="small text-muted mb-2">Cash clients only. Select the required tests.</p>
-                              <div class="list-group">
+                              <div class="list-group overflow-auto" style="max-height: 55vh;">
                                 {% for t in _lab_opts %}
                                   <label class="list-group-item d-flex justify-content-between align-items-center">
                                     <span>
