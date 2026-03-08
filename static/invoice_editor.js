@@ -52,12 +52,20 @@
     }
     items.forEach((it) => {
       const div = document.createElement('div');
-      div.className = 'result-item';
+      div.className = 'result-item' + (it.out_of_stock ? ' result-item-out' : '');
       div.dataset.kind = it.kind;          // "procedure" | "drug" | "other"
       div.dataset.refId = it.ref_id;       // numeric id referenced in backend
       div.dataset.price = it.price;        // cash or insurer price
+      div.dataset.outOfStock = it.out_of_stock ? '1' : '0';
       div.textContent = it.text;
-      // add a tiny pill for category
+
+      if (it.category === 'drug') {
+        const stockPill = document.createElement('span');
+        stockPill.className = 'result-pill ' + (it.out_of_stock ? 'pill-out' : 'pill-stock');
+        stockPill.textContent = it.out_of_stock ? 'out of stock' : `stock ${it.qty}`;
+        div.appendChild(stockPill);
+      }
+
       const pill = document.createElement('span');
       pill.className = 'result-pill ' + (it.category === 'lab' ? 'pill-lab' : (it.kind === 'drug' ? 'pill-drug' : 'pill-proc'));
       pill.textContent = it.category ? it.category : it.kind;
@@ -96,12 +104,15 @@
     const [drugs, procs, labs] = await Promise.all([drugPromise, procPromise, labPromise]);
     const results = [];
     drugs.forEach((d) => {
+      const qty = Number(d.qty || 0);
       results.push({
         kind: 'drug',
         category: 'drug',
         ref_id: d.id,
         text: `${d.name} (UGX ${Number(d.price || 0).toFixed(0)})`,
-        price: d.price || 0
+        price: d.price || 0,
+        qty,
+        out_of_stock: qty <= 0
       });
     });
     procs.forEach((p) => {
