@@ -121,6 +121,11 @@
     align-items: center;
   }
   .result-item:hover { background: #f5f7fa; }
+  .result-item-out {
+    background: #fef2f2;
+    border-left: 3px solid #dc2626;
+  }
+  .result-item-out:hover { background: #fee2e2; }
   .result-pill {
     font-size: 11px;
     padding: 2px 6px;
@@ -132,6 +137,8 @@
   .pill-lab { background: #e0f2fe; color: #075985; }
   .pill-drug { background: #dcfce7; color: #166534; }
   .pill-proc { background: #fef9c3; color: #854d0e; }
+  .pill-stock { background: #ecfeff; color: #0f766e; }
+  .pill-out { background: #fee2e2; color: #991b1b; }
 </style>
 <script src="{{ url_for('static', filename='invoice_editor.js') }}"></script>
 {% endblock %}

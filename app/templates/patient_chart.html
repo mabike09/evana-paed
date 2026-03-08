@@ -172,6 +172,7 @@
                        list="drug-suggestions"
                        autocomplete="off">
                 <input type="hidden" class="drug-id" name="drug_id[]" value="">
+                <div class="small mt-1 drug-stock-hint"></div>
               </div>
               <div class="col-md-3">
                 <input class="form-control" name="dose[]" placeholder="Dose e.g. 500mg bd">
@@ -242,13 +243,32 @@
       const procInput = document.getElementById('procedure-name');
       const procIdInput = document.getElementById('procedure-id');
 
-      // cache by displayed name -> id/price
-      let drugCache = {}; // raw name -> {id, price}
-      let drugCacheByKey = {}; // normalized name -> {id, price}
+      // cache by displayed name -> id/price/qty
+      let drugCache = {}; // raw name -> {id, price, qty}
+      let drugCacheByKey = {}; // normalized name -> {id, price, qty}
       let procCache = {}; // name -> {id, price}
 
       function normDrugName(v){
         return (v || '').trim().toLowerCase();
+      }
+
+      function updateDrugStockHint(row, hit){
+        const hint = row ? row.querySelector('.drug-stock-hint') : null;
+        if(!hint){
+          return;
+        }
+        hint.className = 'small mt-1 drug-stock-hint';
+        if(!hit || typeof hit.qty === 'undefined'){
+          hint.textContent = '';
+          return;
+        }
+        if(Number(hit.qty) <= 0){
+          hint.classList.add('text-danger', 'fw-semibold');
+          hint.textContent = 'Out of stock';
+          return;
+        }
+        hint.classList.add('text-muted');
+        hint.textContent = `In stock: ${hit.qty}`;
       }
 
       function debounce(fn, wait){
@@ -286,7 +306,7 @@
         data.forEach(it => {
           // expected from API: {id, name, price}
           const key = normDrugName(it.name);
-          const candidate = { id: it.id, price: it.price };
+          const candidate = { id: it.id, price: it.price, qty: Number(it.qty || 0) };
           drugCache[it.name] = candidate;
           const existing = drugCacheByKey[key];
           // Prefer inventory-linked suggestion (has id) for same display text.
@@ -295,6 +315,9 @@
           }
           const opt = document.createElement('option');
           opt.value = it.name;
+          if(Number(it.qty || 0) <= 0){
+            opt.label = `${it.name} — OUT OF STOCK`;
+          }
           drugList.appendChild(opt);
         });
       }, 200);
@@ -329,6 +352,7 @@
           const hid = row ? row.querySelector('.drug-id') : null;
           const hit = drugCache[e.target.value] || drugCacheByKey[normDrugName(e.target.value)];
           if(hid) hid.value = hit ? hit.id : '';
+          updateDrugStockHint(row, hit);
         }
         if(e.target === procInput){
           loadProcSuggestions(procInput.value);
@@ -342,6 +366,7 @@
           const hid = row ? row.querySelector('.drug-id') : null;
           const hit = drugCache[e.target.value] || drugCacheByKey[normDrugName(e.target.value)];
           if(hid) hid.value = hit ? hit.id : '';
+          updateDrugStockHint(row, hit);
         }
         if(e.target === procInput){
           const hit = procCache[procInput.value];
