@@ -10,6 +10,24 @@
   </div>
 </div>
 
+<div class="card mb-3">
+  <div class="card-header py-2 fw-semibold">Patient Information</div>
+  <div class="card-body py-2">
+    <div class="row g-2 small">
+      <div class="col-md-4"><strong>Name:</strong> {{ ((patient.first_name if patient else '') ~ ' ' ~ (patient.last_name if patient else ''))|trim or '—' }}</div>
+      <div class="col-md-4"><strong>Patient Number:</strong> {{ patient.patient_code if patient and patient.patient_code else '—' }}</div>
+      <div class="col-md-4"><strong>Sex:</strong> {{ patient.sex if patient and patient.sex else '—' }}</div>
+
+      <div class="col-md-4"><strong>Date of Birth:</strong> {{ patient.date_of_birth if patient and patient.date_of_birth else '—' }}</div>
+      <div class="col-md-4"><strong>Age:</strong> {{ age_years ~ ' years' if age_years is not none else '—' }}</div>
+      <div class="col-md-4"><strong>Phone:</strong> {{ patient.phone if patient and patient.phone else '—' }}</div>
+
+      <div class="col-md-6"><strong>Allergies:</strong> {{ patient.allergies if patient and patient.allergies else '—' }}</div>
+      <div class="col-md-6"><strong>Clinical Notes / Diagnosis:</strong> {{ visit.diagnosis if visit and visit.diagnosis else (visit.notes if visit and visit.notes else '—') }}</div>
+    </div>
+  </div>
+</div>
+
 <form method="post">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <div class="table-responsive">
@@ -17,13 +35,61 @@
       <thead><tr><th>Test</th><th>Value</th><th>Notes</th></tr></thead>
       <tbody>
         {% for ln in lines %}
+          {% set test_name_lower = (ln.test_name or '')|lower %}
+          {% set urinalysis_template -%}
+MACROSCOPIC EXAMINATION
+- Physical Appearance:
+
+CHEMICAL EXAMINATION
+- Leukocytes Esterase:
+- Nitrite:
+- Urobilinogen:
+- Protein:
+- pH:
+- Blood:
+- Specific Gravity:
+- Ketone:
+- Bilirubin:
+- Glucose:
+
+MICROSCOPIC EXAMINATION
+- RBCs:
+- Epithelial Cells:
+- Bacteria:
+- Crystals:
+- Casts:
+- Yeast Cells:
+- Pus Cells:
+- Mucus Threads:
+          {%- endset %}
+          {% set stool_template -%}
+MACROSCOPIC EXAMINATION
+- Physical Appearance:
+- Consistency:
+- Mucous:
+- Blood (Macro):
+
+MICROSCOPIC EXAMINATION
+- Pus Cells:
+- Ova:
+- Parasites:
+- Red Blood Cells:
+          {%- endset %}
+          {% set default_result_text = ln.result_text or '' %}
+          {% if not default_result_text %}
+            {% if 'urinalysis' in test_name_lower %}
+              {% set default_result_text = urinalysis_template %}
+            {% elif 'stool analysis' in test_name_lower %}
+              {% set default_result_text = stool_template %}
+            {% endif %}
+          {% endif %}
           <tr>
             <td>
               {{ ln.test_name }}
               <input type="hidden" name="line_id[]" value="{{ ln.id }}">
             </td>
             <td><input class="form-control form-control-sm" name="result_value[]" value="{{ ln.result_value or '' }}"></td>
-            <td><textarea class="form-control form-control-sm" name="result_text[]" rows="1">{{ ln.result_text or '' }}</textarea></td>
+            <td><textarea class="form-control form-control-sm" name="result_text[]" rows="13">{{ default_result_text }}</textarea></td>
           </tr>
         {% endfor %}
       </tbody>

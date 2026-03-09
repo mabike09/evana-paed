@@ -22,7 +22,7 @@
       {{ form.date_of_birth.label(class="form-label") }} {{ form.date_of_birth(class="form-control") }}
     </div>
     <div class="col-md-4">
-      {{ form.phone.label(class="form-label") }} {{ form.phone(class="form-control") }}
+      {{ form.phone.label(class="form-label") }} {{ form.phone(class="form-control", placeholder="256XXXXXXXXX", pattern="256[0-9]{9}", maxlength="12", inputmode="numeric") }}
     </div>
     <div class="col-md-6">
       {{ form.email.label(class="form-label") }} {{ form.email(class="form-control") }}

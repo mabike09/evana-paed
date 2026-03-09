@@ -254,6 +254,25 @@ def lab_queue():
 def lab_enter_results(order_id):
     order = LabOrder.query.get_or_404(order_id)
     lines = LabOrderLine.query.filter_by(order_id=order.id).all()
+    patient = Patient.query.get(order.patient_id)
+
+    visit = None
+    if Visit is not None and getattr(order, "visit_id", None):
+        try:
+            visit = Visit.query.get(order.visit_id)
+        except Exception:
+            visit = None
+
+    age_years = None
+    dob_value = getattr(patient, "date_of_birth", None) if patient else None
+    if dob_value:
+        try:
+            from datetime import date
+            born = datetime.strptime(str(dob_value), "%Y-%m-%d").date()
+            today = date.today()
+            age_years = today.year - born.year - ((today.month, today.day) < (born.month, born.day))
+        except Exception:
+            age_years = None
 
     if request.method == "POST":
         vals     = request.form.getlist("result_value[]")
@@ -371,6 +390,9 @@ def lab_enter_results(order_id):
         "lab_enter_results.html",
         order=order,
         lines=lines,
+        patient=patient,
+        visit=visit,
+        age_years=age_years,
         print_url=url_for("lab.lab_results_print", order_id=order.id),
     )
 
