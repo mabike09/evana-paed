@@ -2,7 +2,7 @@
 from datetime import date
 from flask_wtf import FlaskForm
 from wtforms import StringField, DateField, SelectField, TextAreaField, BooleanField, SubmitField, DecimalField, PasswordField                     
-from wtforms.validators import DataRequired, Length, Optional, Email, NumberRange, EqualTo
+from wtforms.validators import DataRequired, Length, Optional, Email, NumberRange, EqualTo, Regexp
 
 ROLES = [
     ("admin","Admin"),
@@ -63,7 +63,13 @@ class PatientForm(FlaskForm):
     last_name  = StringField("Last Name",  validators=[DataRequired(), Length(max=80)])
     sex = SelectField("Sex", choices=[("", "Select..."), ("Male", "Male"), ("Female", "Female")])
     date_of_birth = DateField("Date of Birth", format="%Y-%m-%d", validators=[Optional()])
-    phone = StringField("Phone", validators=[DataRequired(), Length(max=30)])
+    phone = StringField(
+        "Phone",
+        validators=[
+            DataRequired(),
+            Regexp(r"^256\d{9}$", message="Phone number must be in the format 256XXXXXXXXX."),
+        ],
+    )
     email = StringField("Email", validators=[Optional(), Email(), Length(max=120)])
     address = StringField("Address", validators=[Optional(), Length(max=200)])
     next_of_kin = StringField("Next of Kin", validators=[Optional(), Length(max=120)])

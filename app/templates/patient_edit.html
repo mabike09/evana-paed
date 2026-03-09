@@ -29,7 +29,7 @@
 
     <div class="col-md-4">
       <label class="form-label">Phone</label>
-      {{ form.phone(class="form-control") }}
+      {{ form.phone(class="form-control", placeholder="256XXXXXXXXX", pattern="256[0-9]{9}", maxlength="12", inputmode="numeric") }}
       {% for e in form.phone.errors %}<div class="text-danger small">{{ e }}</div>{% endfor %}
     </div>
 
