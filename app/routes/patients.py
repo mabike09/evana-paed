@@ -1401,7 +1401,19 @@ def patients_new():
 @login_required
 @roles_required("reception", "nurse", "doctor", "pediatrician", "admin", "labtech")
 def patient_detail(patient_id):
-    return redirect(url_for("patients.patient_chart", patient_id=patient_id))
+    p = Patient.query.get_or_404(patient_id)
+    invoices = (
+        Invoice.query
+        .filter_by(patient_id=p.id)
+        .order_by(Invoice.created_at.desc(), Invoice.id.desc())
+        .all()
+    )
+
+    return render_template(
+        "patient_profile.html",
+        p=p,
+        invoices=invoices,
+    )
 
 
 @bp.route("/patients/<int:patient_id>/edit", methods=["GET", "POST"])
@@ -1438,7 +1450,7 @@ def patient_edit(patient_id):
 
         db.session.commit()
         flash("Patient updated.", "success")
-        return redirect(url_for("patients.patient_chart", patient_id=p.id))
+        return redirect(url_for("patients.patient_detail", patient_id=p.id))
 
     if request.method == "POST":
         flash("Please correct the errors below.", "danger")
