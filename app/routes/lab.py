@@ -282,9 +282,15 @@ def lab_enter_results(order_id):
         db.session.commit()
         flash("Lab results saved successfully.", "success")
 
-        # ------------------------------------------------------------
-        # If completed, clear LAB queue entries and close the visit.
-        # ------------------------------------------------------------
+        # -----------------------------------------------------------------
+        # If completed, clear LAB queue entries.
+        #
+        # Routing after lab completion:
+        # - If this lab request came from the patient chart/doctor flow,
+        #   move the patient back to DOCTOR queue.
+        # - Otherwise (e.g., patient-list initiated requests), keep existing
+        #   behavior and close the visit.
+        # -----------------------------------------------------------------
         try:
             is_completed = (getattr(order, "status", None) == "Completed")
             if is_completed and BillingQueue is not None:
@@ -297,20 +303,62 @@ def lab_enter_results(order_id):
                 else:
                     q = q.filter(BillingQueue.patient_id == order.patient_id)
 
-                for row in q.all():
+                lab_rows = q.all()
+                came_from_doctor = False
+                for row in lab_rows:
+                    desc = (getattr(row, "description", None) or "").strip().lower()
+                    if "from doctor" in desc or "sent to lab from doctor" in desc:
+                        came_from_doctor = True
                     row.status = "Closed"
                     if hasattr(row, "closed_at"):
                         row.closed_at = datetime.utcnow()
 
+                patient = Patient.query.get(order.patient_id)
+                insurance_provider = (getattr(patient, "insurance_provider", None) or "").strip().lower()
+                is_cash_patient = (not insurance_provider) or (insurance_provider == "cash")
+                should_return_to_doctor = came_from_doctor or is_cash_patient
+
                 if Visit is not None and getattr(order, "visit_id", None):
                     v = Visit.query.get(order.visit_id)
                     if v:
-                        if hasattr(v, "status"):
-                            v.status = "Closed"
-                        if hasattr(v, "closed_at"):
-                            v.closed_at = datetime.utcnow()
-                        if hasattr(v, "current_station"):
-                            v.current_station = "CLOSED"
+                        if should_return_to_doctor:
+                            # Re-open/move to doctor queue.
+                            existing_doctor = (
+                                BillingQueue.query.filter_by(status="Open")
+                                .filter(BillingQueue.visit_id == order.visit_id)
+                                .filter(BillingQueue.kind == "DOCTOR")
+                                .first()
+                            )
+                            if not existing_doctor:
+                                dq = BillingQueue()
+                                if hasattr(dq, "patient_id"):
+                                    dq.patient_id = order.patient_id
+                                if hasattr(dq, "visit_id"):
+                                    dq.visit_id = order.visit_id
+                                if hasattr(dq, "status"):
+                                    dq.status = "Open"
+                                if hasattr(dq, "added_at"):
+                                    dq.added_at = datetime.utcnow()
+                                if hasattr(dq, "added_by"):
+                                    dq.added_by = getattr(current_user, "id", None)
+                                if hasattr(dq, "kind"):
+                                    dq.kind = "DOCTOR"
+                                if hasattr(dq, "description"):
+                                    dq.description = "Returned from Lab"
+                                db.session.add(dq)
+
+                            if hasattr(v, "status"):
+                                v.status = "Open"
+                            if hasattr(v, "current_station"):
+                                v.current_station = "DOCTOR"
+                        else:
+                            # Non-cash, non-doctor-origin lab flows keep the old close-out behavior.
+                            if hasattr(v, "status"):
+                                v.status = "Closed"
+                            if hasattr(v, "closed_at"):
+                                v.closed_at = datetime.utcnow()
+                            if hasattr(v, "current_station"):
+                                v.current_station = "CLOSED"
 
                 db.session.commit()
         except Exception:
