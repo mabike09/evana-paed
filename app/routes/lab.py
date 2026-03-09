@@ -332,10 +332,15 @@ def lab_enter_results(order_id):
                     if hasattr(row, "closed_at"):
                         row.closed_at = datetime.utcnow()
 
+                patient = Patient.query.get(order.patient_id)
+                insurance_provider = (getattr(patient, "insurance_provider", None) or "").strip().lower()
+                is_cash_patient = (not insurance_provider) or (insurance_provider == "cash")
+                should_return_to_doctor = came_from_doctor or is_cash_patient
+
                 if Visit is not None and getattr(order, "visit_id", None):
                     v = Visit.query.get(order.visit_id)
                     if v:
-                        if came_from_doctor:
+                        if should_return_to_doctor:
                             # Re-open/move to doctor queue.
                             existing_doctor = (
                                 BillingQueue.query.filter_by(status="Open")
@@ -366,6 +371,7 @@ def lab_enter_results(order_id):
                             if hasattr(v, "current_station"):
                                 v.current_station = "DOCTOR"
                         else:
+                            # Non-cash, non-doctor-origin lab flows keep the old close-out behavior.
                             if hasattr(v, "status"):
                                 v.status = "Closed"
                             if hasattr(v, "closed_at"):
