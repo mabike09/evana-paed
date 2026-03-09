@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block title %}Patient Profile{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h1 class="h4 mb-0">Patient Profile — {{ p.first_name }} {{ p.last_name }}</h1>
+  <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('patients.patients_list') }}">Back to Patients</a>
+</div>
+
+<div class="card mb-4">
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <span>Registration Information</span>
+    {% if current_user.role in ['reception', 'nurse', 'admin'] %}
+      <a class="btn btn-sm btn-primary" href="{{ url_for('patients.patient_edit', patient_id=p.id) }}">Edit registration information</a>
+    {% endif %}
+  </div>
+  <div class="card-body">
+    <div class="row g-3">
+      <div class="col-md-3"><strong>Patient ID:</strong> {{ p.id }}</div>
+      <div class="col-md-3"><strong>Patient Code:</strong> {{ p.patient_code or '—' }}</div>
+      <div class="col-md-3"><strong>Sex:</strong> {{ p.sex or '—' }}</div>
+      <div class="col-md-3"><strong>Date of Birth:</strong> {{ p.date_of_birth or '—' }}</div>
+
+      <div class="col-md-4"><strong>Phone:</strong> {{ p.phone or '—' }}</div>
+      <div class="col-md-4"><strong>Email:</strong> {{ p.email or '—' }}</div>
+      <div class="col-md-4"><strong>Address:</strong> {{ p.address or '—' }}</div>
+
+      <div class="col-md-4"><strong>Next of Kin:</strong> {{ p.next_of_kin or '—' }}</div>
+      <div class="col-md-4"><strong>Insurance Provider:</strong> {{ p.insurance_provider or '—' }}</div>
+      <div class="col-md-4"><strong>Policy Number:</strong> {{ p.policy_number or '—' }}</div>
+
+      <div class="col-md-6"><strong>Allergies:</strong> {{ p.allergies or '—' }}</div>
+      <div class="col-md-6"><strong>Medical History:</strong> {{ p.medical_history or '—' }}</div>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header">Billing History</div>
+  <div class="card-body p-0">
+    {% if invoices %}
+      <div class="table-responsive">
+        <table class="table table-sm align-middle mb-0">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Date</th>
+              <th>Invoice No.</th>
+              <th>Status</th>
+              <th>Total</th>
+              <th>Paid</th>
+              <th>Balance</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for inv in invoices %}
+              <tr>
+                <td>{{ loop.index }}</td>
+                <td>{{ inv.created_at.strftime('%Y-%m-%d %H:%M') if inv.created_at else (inv.issue_date or '—') }}</td>
+                <td>{{ inv.number or '—' }}</td>
+                <td>{{ 'Paid' if (inv.balance or 0) <= 0 else 'Pending' }}</td>
+                <td>UGX {{ '{:,.0f}'.format(inv.amount or 0) }}</td>
+                <td>UGX {{ '{:,.0f}'.format(inv.paid_total or 0) }}</td>
+                <td>UGX {{ '{:,.0f}'.format(inv.balance or 0) }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <div class="p-3 text-muted">No billing history yet.</div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

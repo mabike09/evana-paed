@@ -88,7 +88,11 @@
           <tr>
             <td>{{ p.id }}</td>
             <td>{{ p.patient_code }}</td>
-            <td>{{ p.first_name }} {{ p.last_name }}</td>
+            <td>
+              <a href="{{ url_for('patients.patient_detail', patient_id=p.id) }}">
+                {{ p.first_name }} {{ p.last_name }}
+              </a>
+            </td>
             <td>{{ p.phone }}</td>
             <td>{{ p.insurance_provider or '—' }}</td>
             <td>UGX {{ '%.0f'|format(p.balance or 0) }}</td>
