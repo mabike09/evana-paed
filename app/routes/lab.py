@@ -7,6 +7,7 @@ from flask_login import login_required, current_user
 from ..permissions import roles_required
 from ..extensions import db
 from ..models import LabOrder, LabOrderLine, Procedure, Patient
+from ..timezone import eat_now
 
 bp = Blueprint("lab", __name__)
 
@@ -77,7 +78,7 @@ def lab_order_create(patient_id):
         visit_id=visit_id,
         status="Pending",
         created_by=getattr(current_user, "id", None),
-        created_at=datetime.utcnow() if hasattr(LabOrder, "created_at") else None,
+        created_at=eat_now() if hasattr(LabOrder, "created_at") else None,
     )
     db.session.add(order)
     db.session.flush()
@@ -160,7 +161,7 @@ def lab_queue():
                     visit_id=getattr(row, "visit_id", None),
                     status="Pending",
                     created_by=getattr(current_user, "id", None),
-                    created_at=datetime.utcnow() if hasattr(LabOrder, "created_at") else None,
+                    created_at=eat_now() if hasattr(LabOrder, "created_at") else None,
                 )
                 db.session.add(lo)
                 db.session.flush()
@@ -289,7 +290,7 @@ def lab_enter_results(order_id):
             ln.result_text  = (rt or "").strip() or None
             ln.status       = "Done"
             if hasattr(ln, "result_at"):
-                ln.result_at = datetime.utcnow()
+                ln.result_at = eat_now()
             if hasattr(ln, "performed_by"):
                 ln.performed_by = getattr(current_user, "id", None)
 
@@ -330,7 +331,7 @@ def lab_enter_results(order_id):
                         came_from_doctor = True
                     row.status = "Closed"
                     if hasattr(row, "closed_at"):
-                        row.closed_at = datetime.utcnow()
+                        row.closed_at = eat_now()
 
                 patient = Patient.query.get(order.patient_id)
                 insurance_provider = (getattr(patient, "insurance_provider", None) or "").strip().lower()
@@ -357,7 +358,7 @@ def lab_enter_results(order_id):
                                 if hasattr(dq, "status"):
                                     dq.status = "Open"
                                 if hasattr(dq, "added_at"):
-                                    dq.added_at = datetime.utcnow()
+                                    dq.added_at = eat_now()
                                 if hasattr(dq, "added_by"):
                                     dq.added_by = getattr(current_user, "id", None)
                                 if hasattr(dq, "kind"):
@@ -375,7 +376,7 @@ def lab_enter_results(order_id):
                             if hasattr(v, "status"):
                                 v.status = "Closed"
                             if hasattr(v, "closed_at"):
-                                v.closed_at = datetime.utcnow()
+                                v.closed_at = eat_now()
                             if hasattr(v, "current_station"):
                                 v.current_station = "CLOSED"
 

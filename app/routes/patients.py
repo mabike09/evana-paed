@@ -13,6 +13,7 @@ from ..permissions import roles_required
 from ..forms import PatientForm, VisitForm, InvoiceForm, PaymentForm
 from ..models import Patient, Visit, Invoice, Payment, BillingQueue, FileAsset, Insurer
 from ..utils import generate_patient_code, generate_invoice_number, generate_receipt_number
+from ..timezone import eat_now
 
 # --- Model aliases used by patient_chart() ---
 # IMPORTANT: these must exist at module scope, otherwise you'll get NameError at runtime.
@@ -554,7 +555,7 @@ def _get_or_create_open_invoice(patient_id: int, visit_id: int | None):
     except Exception:
         inv = None
 
-    today = datetime.utcnow()
+    today = eat_now()
     today_str = today.strftime("%Y-%m-%d")
 
     if inv:
@@ -646,7 +647,7 @@ def _upsert_queue_entry(patient_id: int, visit_id: int | None, kind: str, descri
     if hasattr(entry, "status"):
         entry.status = "Open"
     if hasattr(entry, "added_at"):
-        entry.added_at = datetime.utcnow()
+        entry.added_at = eat_now()
     if hasattr(entry, "added_by"):
         entry.added_by = getattr(current_user, "id", None)
     if hasattr(entry, "kind"):
@@ -664,14 +665,14 @@ def _get_or_create_invoice(p: Patient, v: Visit, issue_date: datetime | None = N
     inv = Invoice(
         patient_id=p.id,
         visit_id=v.id,
-        issue_date=(issue_date or datetime.utcnow()).strftime("%Y-%m-%d"),
+        issue_date=(issue_date or eat_now()).strftime("%Y-%m-%d"),
         description="",
         amount=Decimal("0"),
         payer_type=_resolve_payer_kind(p),
     )
     db.session.add(inv)
     db.session.flush()
-    inv.number = generate_invoice_number(issue_date or datetime.utcnow())
+    inv.number = generate_invoice_number(issue_date or eat_now())
     db.session.commit()
     return inv
 
@@ -792,7 +793,7 @@ def _get_or_create_open_visit(patient_id: int) -> Visit:
          .order_by(Visit.id.desc())
          .first())
 
-    today_str = datetime.utcnow().strftime("%Y-%m-%d")
+    today_str = eat_now().strftime("%Y-%m-%d")
     same_day_open_visit = bool(
         v
         and str(getattr(v, "visit_date", "") or "").strip() == today_str
@@ -843,7 +844,7 @@ def _enqueue_billing(patient_id: int, visit_id: int | None, note: str = ""):
             if hasattr(q, "status"):
                 q.status = "Open"
             if hasattr(q, "added_at"):
-                q.added_at = datetime.utcnow()
+                q.added_at = eat_now()
             if hasattr(q, "kind"):
                 q.kind = "BILLING"
             if note and hasattr(q, "description"):
@@ -1121,7 +1122,7 @@ def patients_send_to_lab(patient_id):
     if hasattr(lo, "status"):
         lo.status = "PendingPayment"
     if hasattr(lo, "created_at"):
-        lo.created_at = datetime.utcnow()
+        lo.created_at = eat_now()
     if hasattr(lo, "created_by"):
         lo.created_by = getattr(current_user, "id", None)
 
@@ -1280,7 +1281,7 @@ def visit_send_to_lab(visit_id):
             if hasattr(lo, "visit_id"):   lo.visit_id   = v.id
             if hasattr(lo, "status"):
                 lo.status = "Pending" if _is_insurance_patient(p) else "PendingPayment"
-            if hasattr(lo, "created_at"): lo.created_at = datetime.utcnow()
+            if hasattr(lo, "created_at"): lo.created_at = eat_now()
             if hasattr(lo, "created_by"): lo.created_by = getattr(current_user, "id", None)
 
             names = ", ".join([
@@ -1589,18 +1590,18 @@ def visit_close_and_bill(visit_id):
         inv = Invoice(
             patient_id=v.patient_id,
             visit_id=v.id,
-            issue_date=datetime.utcnow().strftime("%Y-%m-%d"),
+            issue_date=eat_now().strftime("%Y-%m-%d"),
             description="",
             amount=Decimal("0"),
             payer_type=_resolve_payer_kind(p),
         )
         db.session.add(inv)
         db.session.flush()
-        inv.number = generate_invoice_number(datetime.utcnow())
+        inv.number = generate_invoice_number(eat_now())
         db.session.flush()  # ensure inv.id exists for lines
         
         v.status = "Closed"
-        v.closed_at = datetime.utcnow()
+        v.closed_at = eat_now()
         inv = Invoice.query.filter_by(patient_id=v.patient_id, visit_id=v.id).order_by(Invoice.id.desc()).first()
         if inv and hasattr(inv, "status"):
             inv.status = "closed"
@@ -1692,7 +1693,7 @@ def visit_close_and_bill(visit_id):
         has_procedures = False
 
     # Close any open queue entries that should no longer be active
-    now = datetime.utcnow()
+    now = eat_now()
     try:
         open_entries = BillingQueue.query.filter_by(visit_id=v.id, status="Open").all()
         for e in open_entries:
@@ -1816,7 +1817,7 @@ def visit_add_procedure(visit_id):
     # Ensure invoice exists for this visit
     inv = Invoice.query.filter_by(visit_id=v.id).order_by(Invoice.id.desc()).first()
     if not inv:
-        today = datetime.utcnow().date().strftime("%Y-%m-%d")
+        today = eat_now().date().strftime("%Y-%m-%d")
         payer_type = "Insurance" if (v.patient and v.patient.insurance_provider) else "Cash"
 
         inv = Invoice(
@@ -1911,7 +1912,7 @@ def patients_send_to_triage(patient_id):
     if hasattr(q, "patient_id"): q.patient_id = p.id
     if hasattr(q, "visit_id"): q.visit_id = v.id
     if hasattr(q, "status"): q.status = "Open"
-    if hasattr(q, "added_at"): q.added_at = datetime.utcnow()
+    if hasattr(q, "added_at"): q.added_at = eat_now()
     if hasattr(q, "kind"): q.kind = "TRIAGE"
     if hasattr(q, "description"): q.description = f"Triage requested by {getattr(current_user, 'username', 'user')}"
 
@@ -1940,7 +1941,7 @@ def patients_send_to_pharmacy(patient_id):
     if hasattr(q, "patient_id"): q.patient_id = p.id
     if hasattr(q, "visit_id"): q.visit_id = v.id
     if hasattr(q, "status"): q.status = "Open"
-    if hasattr(q, "added_at"): q.added_at = datetime.utcnow()
+    if hasattr(q, "added_at"): q.added_at = eat_now()
     if hasattr(q, "kind"): q.kind = "PHARMACY"
     if hasattr(q, "description"):
         q.description = "Sent from patients list to pharmacy (nurse can create invoice here)"
@@ -2017,7 +2018,7 @@ def triage_start(q_id):
         if hasattr(dq, "patient_id"): dq.patient_id = p.id
         if hasattr(dq, "visit_id"):   dq.visit_id   = v.id
         if hasattr(dq, "status"):     dq.status     = "Open"
-        if hasattr(dq, "added_at"):   dq.added_at   = datetime.utcnow()
+        if hasattr(dq, "added_at"):   dq.added_at   = eat_now()
         if hasattr(dq, "kind"):       dq.kind       = "DOCTOR"
         if hasattr(dq, "description"):dq.description= "From Triage"
         db.session.add(dq)
@@ -2071,7 +2072,7 @@ def triage_finish(q_id):
     if hasattr(next_q, "patient_id"): next_q.patient_id = q.patient_id
     if hasattr(next_q, "visit_id"):   next_q.visit_id = q.visit_id
     if hasattr(next_q, "status"):     next_q.status = "Open"
-    if hasattr(next_q, "added_at"):   next_q.added_at = datetime.utcnow()
+    if hasattr(next_q, "added_at"):   next_q.added_at = eat_now()
     if hasattr(next_q, "kind"):       next_q.kind = "DOCTOR"
     if hasattr(next_q, "description"): next_q.description = "From Triage"
 

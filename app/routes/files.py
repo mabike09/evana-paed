@@ -10,6 +10,7 @@ from flask_wtf import FlaskForm
 from ..extensions import db
 from ..models import FileAsset, Patient, Visit
 from ..utils import *
+from ..timezone import eat_now
 
 ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg", "gif", "pdf"}
 
@@ -35,7 +36,7 @@ def patient_files(patient_id):
             raw_name = f.filename
             folder = current_app.config["UPLOAD_FOLDER"] + f"/patient_{patient_id}"
             os.makedirs(folder, exist_ok=True)
-            ts = datetime.utcnow().strftime("%Y%m%d%H%M%S%f")
+            ts = eat_now().strftime("%Y%m%d%H%M%S%f")
             stored_name = f"{ts}__{raw_name}"
             stored_path = os.path.join(folder, stored_name)
             f.save(stored_path)

@@ -9,6 +9,7 @@ from flask import Blueprint, Response, render_template, request
 from flask_login import login_required
 from ..permissions import roles_required
 from ..models import BillingQueue, DispenseTxn, Invoice, InvoiceLine, Item, Patient, Payment, Visit
+from ..timezone import eat_now, eat_today
 
 bp = Blueprint("reports", __name__)
 
@@ -17,7 +18,7 @@ bp = Blueprint("reports", __name__)
 @roles_required("admin")
 def aging_report():
     as_of = request.args.get("as_of")
-    as_of_date = datetime.strptime(as_of, "%Y-%m-%d").date() if as_of else datetime.today().date()
+    as_of_date = datetime.strptime(as_of, "%Y-%m-%d").date() if as_of else eat_today()
     invoices = Invoice.query.all()
     buckets = {"Current (<30)": [], "30-59": [], "60-89": [], "90+": []}
     for inv in invoices:
@@ -66,13 +67,16 @@ def _contains_any(text, keywords):
 def _extract_pharmacy_clear_ts(description):
     if not description:
         return None
-    m = re.search(r"Cleared from pharmacy queue\s*@([0-9T:\-]+Z)", description)
+    m = re.search(r"Cleared from pharmacy queue\s*@([0-9T:\-]+(?:Z)?)", description)
     if not m:
-        m = re.search(r"Closed in pharmacy \(sent to billing\)\s*@([0-9T:\-]+Z)", description)
+        m = re.search(r"Closed in pharmacy \(sent to billing\)\s*@([0-9T:\-]+(?:Z)?)", description)
     if not m:
         return None
+    raw_ts = m.group(1)
+    if raw_ts.endswith("Z"):
+        raw_ts = raw_ts[:-1]
     try:
-        return datetime.strptime(m.group(1), "%Y-%m-%dT%H:%M:%SZ")
+        return datetime.fromisoformat(raw_ts)
     except ValueError:
         return None
 
@@ -81,7 +85,7 @@ def _extract_pharmacy_clear_ts(description):
 @login_required
 @roles_required("reception", "nurse", "admin")
 def reports_dashboard():
-    today = datetime.utcnow().date()
+    today = eat_now().date()
     start_date = _parse_date_param(request.args.get("start_date"), today)
     end_date = _parse_date_param(request.args.get("end_date"), today)
     if end_date < start_date:

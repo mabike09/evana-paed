@@ -5,15 +5,16 @@ from flask import current_app
 from sqlalchemy import func
 from .extensions import db
 from .models import Patient, Invoice, Payment
+from .timezone import eat_now, eat_today
 
 def within_24h(dt):
-    return bool(dt) and (datetime.utcnow() - dt) <= timedelta(hours=24)
+    return bool(dt) and (eat_now() - dt) <= timedelta(hours=24)
 
 def _yy(d: date) -> str: return d.strftime("%y")
 def _yymm(d: date) -> str: return d.strftime("%y%m")
 
 def generate_patient_code(reg_date: date | None = None) -> str:
-    d = reg_date or date.today()
+    d = reg_date or eat_today()
     like = f"BC-{_yy(d)}%"
     seq = (db.session.query(func.count(Patient.id))
            .filter(Patient.patient_code.like(like)).scalar() or 0) + 1
@@ -21,7 +22,7 @@ def generate_patient_code(reg_date: date | None = None) -> str:
 
 def generate_invoice_number(issue_date: date | None = None) -> str:
     """INV-YYMM-#### (no branch)."""
-    d = issue_date or date.today()
+    d = issue_date or eat_today()
     yymm = _yymm(d)
     like = f"INV-{yymm}-%"
     seq = (db.session.query(func.count(Invoice.id))
@@ -30,7 +31,7 @@ def generate_invoice_number(issue_date: date | None = None) -> str:
 
 def generate_receipt_number(pay_date: date | None = None) -> str:
     """RC-YYMM-#### (no branch)."""
-    d = pay_date or date.today()
+    d = pay_date or eat_today()
     yymm = _yymm(d)
     like = f"RC-{yymm}-%"
     seq = (db.session.query(func.count(Payment.id))
@@ -50,7 +51,7 @@ def invoice_editable_now(inv) -> bool:
             parsed = parser.parse(str(dt))
             dt = parsed if isinstance(parsed, _dt) else _dt(parsed.year, parsed.month, parsed.day)
         window = timedelta(hours=current_app.config.get("INVOICE_EDIT_WINDOW_HOURS", 24))
-        return (datetime.utcnow() - dt) <= window
+        return (eat_now() - dt) <= window
     except Exception:
         return False
 

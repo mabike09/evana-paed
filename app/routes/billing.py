@@ -19,6 +19,7 @@ from ..models import (
 )
 from ..utils import generate_invoice_number, generate_receipt_number
 from ..pdf import invoice_pdf_response, payment_pdf_response
+from ..timezone import eat_now
 
 bp = Blueprint("billing", __name__)
 
@@ -70,7 +71,7 @@ def add_invoice(patient_id):
         try:
             issue_date = form.issue_date.data.strftime("%Y-%m-%d")
         except Exception:
-            issue_date = datetime.utcnow().strftime("%Y-%m-%d")
+            issue_date = eat_now().strftime("%Y-%m-%d")
 
         inv = Invoice(
             patient_id=patient_id,
@@ -85,10 +86,10 @@ def add_invoice(patient_id):
         # Number from the provided date (or today)
         try:
             inv.number = generate_invoice_number(
-                form.issue_date.data if hasattr(form, "issue_date") else datetime.utcnow()
+                form.issue_date.data if hasattr(form, "issue_date") else eat_now()
             )
         except Exception:
-            inv.number = generate_invoice_number(datetime.utcnow())
+            inv.number = generate_invoice_number(eat_now())
 
         db.session.commit()
         flash("Invoice created.", "success")
@@ -130,9 +131,9 @@ def add_payment(patient_id, invoice_id):
 
     # Date parse (YYYY-MM-DD), fallback = today
     try:
-        pay_dt = datetime.strptime(payment_date_str, "%Y-%m-%d").date() if payment_date_str else datetime.utcnow().date()
+        pay_dt = datetime.strptime(payment_date_str, "%Y-%m-%d").date() if payment_date_str else eat_now().date()
     except Exception:
-        pay_dt = datetime.utcnow().date()
+        pay_dt = eat_now().date()
 
     pay = Payment()
     # required fields (per models.py)
@@ -151,7 +152,7 @@ def add_payment(patient_id, invoice_id):
     # Receipt number (safe)
     if hasattr(pay, "receipt_no"):
         try:
-            pay.receipt_no = generate_receipt_number(datetime.utcnow())
+            pay.receipt_no = generate_receipt_number(eat_now())
         except Exception:
             try:
                 pay.receipt_no = generate_receipt_number()
@@ -212,7 +213,7 @@ def add_payment(patient_id, invoice_id):
                             if hasattr(pharm_q, "patient_id"): pharm_q.patient_id = patient_id
                             if hasattr(pharm_q, "visit_id"):   pharm_q.visit_id = visit_id
                             if hasattr(pharm_q, "status"):     pharm_q.status = "Open"
-                            if hasattr(pharm_q, "added_at"):   pharm_q.added_at = datetime.utcnow()
+                            if hasattr(pharm_q, "added_at"):   pharm_q.added_at = eat_now()
                             if hasattr(pharm_q, "added_by"):   pharm_q.added_by = getattr(current_user, "id", None)
                             if hasattr(pharm_q, "kind"):       pharm_q.kind = "PHARMACY"
                             if hasattr(pharm_q, "description"):
@@ -255,7 +256,7 @@ def add_payment(patient_id, invoice_id):
                         if hasattr(bq, "patient_id"): bq.patient_id = patient_id
                         if hasattr(bq, "visit_id"):   bq.visit_id = visit_id
                         if hasattr(bq, "status"):     bq.status = "Open"
-                        if hasattr(bq, "added_at"):   bq.added_at = datetime.utcnow()
+                        if hasattr(bq, "added_at"):   bq.added_at = eat_now()
                         if hasattr(bq, "added_by"):   bq.added_by = getattr(current_user, "id", None)
                         if hasattr(bq, "kind"):       bq.kind = "LAB"
                         if hasattr(bq, "description"):bq.description = "Paid lab tests — sent to Lab"
@@ -293,9 +294,9 @@ def add_payment(patient_id, invoice_id):
 
     # Date parse (YYYY-MM-DD), fallback = today
     try:
-        pay_dt = datetime.strptime(payment_date_str, "%Y-%m-%d").date() if payment_date_str else datetime.utcnow().date()
+        pay_dt = datetime.strptime(payment_date_str, "%Y-%m-%d").date() if payment_date_str else eat_now().date()
     except Exception:
-        pay_dt = datetime.utcnow().date()
+        pay_dt = eat_now().date()
 
     # 3) Build Payment object with all NOT NULL fields set BEFORE add/flush
     pay = Payment()
@@ -331,7 +332,7 @@ def add_payment(patient_id, invoice_id):
 
     # Receipt number (safe default)
     try:
-        pay.receipt_no = generate_receipt_number(datetime.utcnow())
+        pay.receipt_no = generate_receipt_number(eat_now())
     except Exception:
         pay.receipt_no = generate_receipt_number()
 
@@ -399,7 +400,7 @@ def add_payment(patient_id, invoice_id):
                             if hasattr(bq, "patient_id"): bq.patient_id = patient_id
                             if hasattr(bq, "visit_id"):   bq.visit_id = visit_id
                             if hasattr(bq, "status"):     bq.status = "Open"
-                            if hasattr(bq, "added_at"):   bq.added_at = datetime.utcnow()
+                            if hasattr(bq, "added_at"):   bq.added_at = eat_now()
                             if hasattr(bq, "added_by"):   bq.added_by = getattr(current_user, "id", None)
                             if hasattr(bq, "kind"):       bq.kind = "LAB"
                             if hasattr(bq, "description"):bq.description = "Paid lab tests — sent to Lab"
@@ -879,7 +880,7 @@ def billing_queue_close(bq_id):
                 if hasattr(labq, "patient_id"): labq.patient_id = bq.patient_id
                 if hasattr(labq, "visit_id"):   labq.visit_id = getattr(bq, "visit_id", None)
                 if hasattr(labq, "status"):     labq.status = "Open"
-                if hasattr(labq, "added_at"):   labq.added_at = datetime.utcnow()
+                if hasattr(labq, "added_at"):   labq.added_at = eat_now()
                 if hasattr(labq, "added_by"):   labq.added_by = getattr(current_user, "id", None)
                 if hasattr(labq, "kind"):       labq.kind = "LAB"
                 if hasattr(labq, "description"):labq.description = "Insurance verified — sent to Lab"
@@ -1023,7 +1024,7 @@ def patient_billing(patient_id):
         grand_total=grand_total,
         grand_paid=grand_paid,
         grand_balance=grand_balance,
-        now=datetime.utcnow(),
+        now=eat_now(),
     )
 
 
