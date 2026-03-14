@@ -3,6 +3,7 @@ from flask_login import login_required, current_user
 from ..permissions import roles_required
 from ..extensions import db
 from ..models import ClinicianQueue, BillingQueue
+from ..timezone import eat_now
 
 bp = Blueprint("queue", __name__)
 
@@ -19,8 +20,7 @@ def clinician_queue():
 def mark_queue_seen(queue_id):
     q = ClinicianQueue.query.get_or_404(queue_id)
     q.status = "Seen"
-    from datetime import datetime
-    q.seen_at = datetime.utcnow()
+    q.seen_at = eat_now()
     q.clinician_id = current_user.id
 
     db.session.commit()

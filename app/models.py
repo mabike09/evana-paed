@@ -6,6 +6,7 @@ from sqlalchemy import Enum as SqlEnum, event
 from flask_login import UserMixin
 from werkzeug.security import generate_password_hash, check_password_hash
 from .extensions import db
+from .timezone import eat_now, eat_today
 
 # ---------------------------
 # Patients & Visits
@@ -81,11 +82,11 @@ class Visit(db.Model):
     files = db.relationship("FileAsset", backref="visit_ref", lazy=True)
     invoice = db.relationship("Invoice", backref="visit", uselist=False)
 
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False, index=True)
+    created_at = db.Column(db.DateTime, default=eat_now, nullable=False, index=True)
 
     @property
     def turnaround_minutes(self):
-        end = self.closed_at or datetime.utcnow()
+        end = self.closed_at or eat_now()
         start = self.created_at or end
         return max(0, int((end - start).total_seconds() // 60))
 
@@ -114,7 +115,7 @@ class Invoice(db.Model):
     lines = db.relationship("InvoiceLine", backref="invoice", lazy=True, cascade="all, delete-orphan")
     payments = db.relationship("Payment", backref="invoice", lazy=True, cascade="all, delete-orphan")
 
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False, index=True)
+    created_at = db.Column(db.DateTime, default=eat_now, nullable=False, index=True)
 
     @property
     def paid_total(self):
@@ -127,7 +128,7 @@ class Invoice(db.Model):
     @property
     def age_days(self):
         try:
-            return (datetime.today().date() - datetime.strptime(self.issue_date, "%Y-%m-%d").date()).days
+            return (eat_today() - datetime.strptime(self.issue_date, "%Y-%m-%d").date()).days
         except Exception:
             return 0
 
@@ -252,7 +253,7 @@ class ItemTxn(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     item_id = db.Column(db.Integer, db.ForeignKey("item.id"), nullable=False, index=True)
-    when = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, index=True)
+    when = db.Column(db.DateTime, nullable=False, default=eat_now, index=True)
     qty_change = db.Column(db.Integer, nullable=False)
     reason = db.Column(db.String(30), nullable=False)
     visit_id = db.Column(db.Integer, db.ForeignKey("visit.id"))
@@ -291,7 +292,7 @@ class DispenseTxn(db.Model):
     visit_id = db.Column(db.Integer, db.ForeignKey("visit.id"))
     invoice_line_id = db.Column(db.Integer, db.ForeignKey("invoice_line.id"))
 
-    when = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, index=True)
+    when = db.Column(db.DateTime, nullable=False, default=eat_now, index=True)
     qty = db.Column(db.Numeric(12, 2), nullable=False, default=1)
     unit_price = db.Column(db.Numeric(12, 2), nullable=False, default=0)
     line_total = db.Column(db.Numeric(12, 2), nullable=False, default=0)
@@ -306,7 +307,7 @@ class ClinicianQueue(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     patient_id = db.Column(db.Integer, db.ForeignKey("patient.id"), nullable=False)
     status = db.Column(db.String(20), default="Waiting")
-    queued_at = db.Column(db.DateTime, default=datetime.utcnow)
+    queued_at = db.Column(db.DateTime, default=eat_now)
     seen_at = db.Column(db.DateTime, nullable=True)
     clinician_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=True)
 
@@ -325,7 +326,7 @@ class BillingQueue(db.Model):
     patient_id = db.Column(db.Integer, db.ForeignKey("patient.id"), nullable=False, index=True)
     visit_id = db.Column(db.Integer, db.ForeignKey("visit.id"))
     status = db.Column(db.String(20), nullable=False, default="Open")
-    added_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, index=True)
+    added_at = db.Column(db.DateTime, nullable=False, default=eat_now, index=True)
     closed_at = db.Column(db.DateTime, nullable=True, index=True)
     added_by = db.Column(db.Integer, db.ForeignKey("user.id"))
 
@@ -348,7 +349,7 @@ class LabOrder(db.Model):
         SqlEnum("PendingPayment", "Pending", "Completed", name="lab_status_enum", native_enum=False),
         default="PendingPayment"
     )
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, index=True)
+    created_at = db.Column(db.DateTime, default=eat_now, index=True)
     created_by = db.Column(db.Integer, db.ForeignKey("user.id"))
 
     lines = db.relationship("LabOrderLine", backref="order", lazy=True, cascade="all, delete-orphan")
@@ -386,7 +387,7 @@ class FileAsset(db.Model):
     mime = db.Column(db.String(100))
     size = db.Column(db.Integer)
     stored_path = db.Column(db.String(500))
-    uploaded_at = db.Column(db.DateTime, default=datetime.utcnow)
+    uploaded_at = db.Column(db.DateTime, default=eat_now)
     uploaded_by = db.Column(db.Integer, db.ForeignKey("user.id"))
 
 
@@ -400,7 +401,7 @@ class SmsLog(db.Model):
     provider_response_id = db.Column(db.String(64))
     status = db.Column(db.String(4))
     remarks = db.Column(db.String(200))
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, index=True)
+    created_at = db.Column(db.DateTime, default=eat_now, index=True)
 
 
 # ===========================
@@ -428,7 +429,7 @@ class PriceBook(db.Model):
     payer_id = db.Column(db.Integer, db.ForeignKey("payer.id"), nullable=False)
     effective_date = db.Column(db.Date, nullable=False)
     currency = db.Column(db.String(8), default="UGX")
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=eat_now)
 
     payer = db.relationship("Payer")
     items = db.relationship("PriceItem", backref="pricebook", lazy=True, cascade="all, delete-orphan")

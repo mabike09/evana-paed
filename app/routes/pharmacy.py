@@ -9,6 +9,7 @@ from sqlalchemy.orm import load_only
 from ..extensions import db
 from app.permissions import roles_required
 from ..models import BillingQueue, Invoice, InvoiceLine, Payment, Item, ItemTxn, DispenseTxn
+from ..timezone import eat_now
 
 
 def _invoice_paid_total(invoice_id: int) -> Decimal:
@@ -107,7 +108,7 @@ def _ensure_open_invoice(patient_id: int, visit_id: int | None) -> Invoice:
     inv = Invoice(
         patient_id=patient_id,
         visit_id=visit_id,
-        issue_date=datetime.utcnow().strftime("%Y-%m-%d"),
+        issue_date=eat_now().strftime("%Y-%m-%d"),
         description="Created in pharmacy",
         amount=0,
     )
@@ -184,10 +185,10 @@ def pharmacy_queue_clear(q_id):
 
     q.status = "Closed"
     if hasattr(q, "closed_at"):
-        q.closed_at = datetime.utcnow()
+        q.closed_at = eat_now()
     if hasattr(q, "description"):
         base = (q.description or "").strip()
-        cleared_stamp = datetime.utcnow().replace(microsecond=0).isoformat() + "Z"
+        cleared_stamp = eat_now().replace(microsecond=0).isoformat()
         note = f"Cleared from pharmacy queue @{cleared_stamp}"
         q.description = f"{base} | {note}" if base else note
 
@@ -281,7 +282,7 @@ def pharmacy_send_to_billing(q_id):
     q.status = "Closed"
     if hasattr(q, "description"):
         base = (q.description or "").strip()
-        moved_stamp = datetime.utcnow().replace(microsecond=0).isoformat() + "Z"
+        moved_stamp = eat_now().replace(microsecond=0).isoformat()
         note = f"Closed in pharmacy (sent to billing) @{moved_stamp}"
         q.description = f"{base} | {note}" if base else note
 
