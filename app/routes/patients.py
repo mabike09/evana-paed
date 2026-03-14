@@ -792,11 +792,19 @@ def _get_or_create_open_visit(patient_id: int) -> Visit:
          .order_by(Visit.id.desc())
          .first())
 
-    # Create a NEW visit if none exists OR last one is closed
-    if (not v) or (getattr(v, "status", "").lower() == "closed") or (getattr(v, "closed_at", None) is not None):
+    today_str = datetime.utcnow().strftime("%Y-%m-%d")
+    same_day_open_visit = bool(
+        v
+        and str(getattr(v, "visit_date", "") or "").strip() == today_str
+        and (getattr(v, "status", "") or "").lower() != "closed"
+        and getattr(v, "closed_at", None) is None
+    )
+
+    # Reuse only an actively open visit from today; otherwise create a NEW visit.
+    if not same_day_open_visit:
         v = Visit(
             patient_id=patient_id,
-            visit_date=datetime.utcnow().strftime("%Y-%m-%d"),
+            visit_date=today_str,
             reason="Auto-created",
             notes="",
             status="Open" if hasattr(Visit, "status") else getattr(v, "status", None),
