@@ -240,29 +240,30 @@ def add_payment(patient_id, invoice_id):
                     lo.status = "Pending"
                     released += 1
 
-                # 2) Ensure there is an OPEN LAB queue entry for this visit/patient
-                try:
-                    q = BillingQueue.query.filter_by(status="Open")
-                    if hasattr(BillingQueue, "kind"):
-                        q = q.filter(BillingQueue.kind == "LAB")
-                    if visit_id:
-                        q = q.filter(BillingQueue.visit_id == visit_id)
-                    else:
-                        q = q.filter(BillingQueue.patient_id == patient_id)
+                # 2) Only enqueue LAB when at least one lab order was released.
+                if released:
+                    try:
+                        q = BillingQueue.query.filter_by(status="Open")
+                        if hasattr(BillingQueue, "kind"):
+                            q = q.filter(BillingQueue.kind == "LAB")
+                        if visit_id:
+                            q = q.filter(BillingQueue.visit_id == visit_id)
+                        else:
+                            q = q.filter(BillingQueue.patient_id == patient_id)
 
-                    exists = q.first() is not None
-                    if not exists:
-                        bq = BillingQueue()
-                        if hasattr(bq, "patient_id"): bq.patient_id = patient_id
-                        if hasattr(bq, "visit_id"):   bq.visit_id = visit_id
-                        if hasattr(bq, "status"):     bq.status = "Open"
-                        if hasattr(bq, "added_at"):   bq.added_at = eat_now()
-                        if hasattr(bq, "added_by"):   bq.added_by = getattr(current_user, "id", None)
-                        if hasattr(bq, "kind"):       bq.kind = "LAB"
-                        if hasattr(bq, "description"):bq.description = "Paid lab tests — sent to Lab"
-                        db.session.add(bq)
-                except Exception:
-                    current_app.logger.exception("Failed ensuring LAB BillingQueue entry")
+                        exists = q.first() is not None
+                        if not exists:
+                            bq = BillingQueue()
+                            if hasattr(bq, "patient_id"): bq.patient_id = patient_id
+                            if hasattr(bq, "visit_id"):   bq.visit_id = visit_id
+                            if hasattr(bq, "status"):     bq.status = "Open"
+                            if hasattr(bq, "added_at"):   bq.added_at = eat_now()
+                            if hasattr(bq, "added_by"):   bq.added_by = getattr(current_user, "id", None)
+                            if hasattr(bq, "kind"):       bq.kind = "LAB"
+                            if hasattr(bq, "description"):bq.description = "Paid lab tests — sent to Lab"
+                            db.session.add(bq)
+                    except Exception:
+                        current_app.logger.exception("Failed ensuring LAB BillingQueue entry")
 
                 if str(payer_type).lower() == "cash" and released:
                     try:
@@ -384,29 +385,30 @@ def add_payment(patient_id, invoice_id):
                         lo.status = "Pending"
                         released += 1
 
-                    # 2) Ensure there is an OPEN LAB queue entry for this visit/patient
-                    try:
-                        q = BillingQueue.query.filter_by(status="Open")
-                        if hasattr(BillingQueue, "kind"):
-                            q = q.filter(BillingQueue.kind == "LAB")
-                        if visit_id:
-                            q = q.filter(BillingQueue.visit_id == visit_id)
-                        else:
-                            q = q.filter(BillingQueue.patient_id == patient_id)
+                    # 2) Only enqueue LAB when at least one lab order was released.
+                    if released:
+                        try:
+                            q = BillingQueue.query.filter_by(status="Open")
+                            if hasattr(BillingQueue, "kind"):
+                                q = q.filter(BillingQueue.kind == "LAB")
+                            if visit_id:
+                                q = q.filter(BillingQueue.visit_id == visit_id)
+                            else:
+                                q = q.filter(BillingQueue.patient_id == patient_id)
 
-                        exists = q.first() is not None
-                        if not exists:
-                            bq = BillingQueue()
-                            if hasattr(bq, "patient_id"): bq.patient_id = patient_id
-                            if hasattr(bq, "visit_id"):   bq.visit_id = visit_id
-                            if hasattr(bq, "status"):     bq.status = "Open"
-                            if hasattr(bq, "added_at"):   bq.added_at = eat_now()
-                            if hasattr(bq, "added_by"):   bq.added_by = getattr(current_user, "id", None)
-                            if hasattr(bq, "kind"):       bq.kind = "LAB"
-                            if hasattr(bq, "description"):bq.description = "Paid lab tests — sent to Lab"
-                            db.session.add(bq)
-                    except Exception:
-                        current_app.logger.exception("Failed ensuring LAB BillingQueue entry")
+                            exists = q.first() is not None
+                            if not exists:
+                                bq = BillingQueue()
+                                if hasattr(bq, "patient_id"): bq.patient_id = patient_id
+                                if hasattr(bq, "visit_id"):   bq.visit_id = visit_id
+                                if hasattr(bq, "status"):     bq.status = "Open"
+                                if hasattr(bq, "added_at"):   bq.added_at = eat_now()
+                                if hasattr(bq, "added_by"):   bq.added_by = getattr(current_user, "id", None)
+                                if hasattr(bq, "kind"):       bq.kind = "LAB"
+                                if hasattr(bq, "description"):bq.description = "Paid lab tests — sent to Lab"
+                                db.session.add(bq)
+                        except Exception:
+                            current_app.logger.exception("Failed ensuring LAB BillingQueue entry")
 
                     db.session.commit()
 
