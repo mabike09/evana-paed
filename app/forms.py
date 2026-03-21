@@ -1,7 +1,7 @@
 # app/forms.py
 from datetime import date
 from flask_wtf import FlaskForm
-from wtforms import StringField, DateField, SelectField, TextAreaField, BooleanField, SubmitField, DecimalField, PasswordField                     
+from wtforms import StringField, DateField, SelectField, TextAreaField, BooleanField, SubmitField, DecimalField, PasswordField
 from wtforms.validators import DataRequired, Length, Optional, Email, NumberRange, EqualTo, Regexp
 
 ROLES = [
@@ -9,6 +9,8 @@ ROLES = [
     ("pediatrician","Pediatrician"),
     ("doctor","Doctor"),
     ("nurse","Nurse"),
+    ("accountant","Accountant"),
+    ("branch_manager","Branch Manager"),
     ("reception","Receptionist"),
     ("labtech","Lab Technician"),
 ]
