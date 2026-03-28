@@ -68,6 +68,8 @@ _ROLE_LANDING_MAP = {
     # Doctors & pediatricians to Doctors Queue
     "doctor": "patients.doctors_queue",
     "pediatrician": "patients.doctors_queue",
+    "accountant": "finance.petty_cash_ledger",
+    "branch_manager": "finance.petty_cash_ledger",
 }
 
 _DEFAULT_LANDING = "patients.patients_list"

@@ -50,6 +50,17 @@
               <li class="nav-item"><a class="nav-link" href="{{ url_for('pharmacy.pharmacy_dashboard') }}">Pharmacy</a></li>
             {% endif %}
           {% endif %}
+          {% if current_user.role in ['reception','nurse','accountant','branch_manager','admin'] %}
+            <li class="nav-item dropdown">
+              <a class="nav-link dropdown-toggle" href="#" data-bs-toggle="dropdown">Finance</a>
+              <ul class="dropdown-menu">
+                <li><a class="dropdown-item" href="{{ url_for('finance.petty_cash_ledger') }}">Petty Cash</a></li>
+                {% if current_user.role in ['accountant','admin'] %}
+                  <li><a class="dropdown-item" href="{{ url_for('finance.petty_cash_reconciliation') }}">Reconciliation</a></li>
+                {% endif %}
+              </ul>
+            </li>
+          {% endif %}
           {% if current_user.role == 'admin' %}
             <li class="nav-item dropdown">
               <a class="nav-link dropdown-toggle" href="#" data-bs-toggle="dropdown">Admin</a>
