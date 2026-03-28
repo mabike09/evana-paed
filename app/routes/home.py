@@ -9,6 +9,8 @@ def index():
     if current_user.is_authenticated:
         if current_user.role in ("doctor", "pediatrician"):
             return redirect(url_for("queue.clinician_queue"))
+        if current_user.role in ("accountant", "branch_manager"):
+            return redirect(url_for("finance.petty_cash_ledger"))
         return redirect(url_for("patients.patients_list"))
     return redirect(url_for("auth.login"))
 

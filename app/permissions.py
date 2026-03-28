@@ -6,6 +6,7 @@ from .extensions import login_manager
 
 ROLE_ALIASES = {
     "receptionist": "reception",
+    "branch manager": "branch_manager",
 }
 
 

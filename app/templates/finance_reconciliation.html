@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block title %}Finance · Petty Cash Reconciliation{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <div>
+    <h2 class="mb-0">Petty Cash Reconciliation</h2>
+    <div class="text-muted">Accessible to accountant/admin for reconciliation review and month-end locking.</div>
+  </div>
+  <a class="btn btn-outline-secondary" href="{{ url_for('finance.petty_cash_ledger') }}">Back to ledger</a>
+</div>
+
+<div class="row g-4">
+  <div class="col-lg-5">
+    <div class="card">
+      <div class="card-header"><strong>New reconciliation</strong></div>
+      <div class="card-body">
+        <form method="post" class="row g-3">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <div class="col-md-6"><label class="form-label">Reconciliation date</label><input class="form-control" type="date" name="reconciliation_date" value="{{ latest.reconciliation_date if latest else '' }}" required></div>
+          <div class="col-md-6"><label class="form-label">System balance</label><input class="form-control" type="text" value="UGX {{ '{:,.2f}'.format(system_balance) }}" readonly></div>
+          <div class="col-md-6"><label class="form-label">Physical cash counted</label><input class="form-control" type="number" step="0.01" min="0" name="physical_cash_counted" required></div>
+          <div class="col-md-6"><label class="form-label">Receipts/accounted expenses</label><input class="form-control" type="number" step="0.01" min="0" name="receipts_accounted_expenses" required></div>
+          <div class="col-md-6"><label class="form-label">Reconciled by</label><input class="form-control" type="text" name="reconciled_by" required></div>
+          <div class="col-md-6"><label class="form-label">Approved by</label><input class="form-control" type="text" name="approved_by" placeholder="Admin"></div>
+          <div class="col-12"><label class="form-label">Comments on variance</label><textarea class="form-control" name="comments" rows="3"></textarea></div>
+          <div class="col-12 form-check ms-3"><input class="form-check-input" type="checkbox" name="lock_period" id="lock_period"><label class="form-check-label" for="lock_period">Lock month-end period after reconciliation</label></div>
+          <div class="col-12"><button class="btn btn-primary w-100" type="submit">Save reconciliation</button></div>
+        </form>
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-7">
+    <div class="card mb-4">
+      <div class="card-header"><strong>Unreconciled transactions</strong></div>
+      <div class="card-body table-responsive">
+        <table class="table table-sm mb-0">
+          <tr><th>Date</th><th>Voucher</th><th>Purpose</th><th>Type</th><th>Amount</th></tr>
+          {% for txn in unreconciled %}
+            <tr><td>{{ txn.date }}</td><td>{{ txn.voucher_number or '—' }}</td><td>{{ txn.purpose }}</td><td>{{ txn.transaction_type|replace('_',' ')|title }}</td><td>UGX {{ '{:,.2f}'.format(txn.amount) }}</td></tr>
+          {% else %}
+            <tr><td colspan="5" class="text-muted">No unreconciled transactions at the moment.</td></tr>
+          {% endfor %}
+        </table>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-header"><strong>Reconciliation history</strong></div>
+      <div class="card-body table-responsive">
+        <table class="table table-sm table-striped mb-0">
+          <tr><th>Date</th><th>System</th><th>Physical</th><th>Receipts</th><th>Shortage/Overage</th><th>Reconciled by</th><th>Approved by</th><th>Timestamps</th></tr>
+          {% for rec in reconciliations %}
+            <tr>
+              <td>{{ rec.reconciliation_date }}</td>
+              <td>UGX {{ '{:,.2f}'.format(rec.system_balance) }}</td>
+              <td>UGX {{ '{:,.2f}'.format(rec.physical_cash_counted) }}</td>
+              <td>UGX {{ '{:,.2f}'.format(rec.receipts_accounted_expenses) }}</td>
+              <td class="fw-semibold {% if rec.shortage_overage < 0 %}text-danger{% else %}text-success{% endif %}">UGX {{ '{:,.2f}'.format(rec.shortage_overage) }}</td>
+              <td>{{ rec.reconciled_by }}</td>
+              <td>{{ rec.approved_by or '—' }}</td>
+              <td><div class="small">Approved: {{ rec.approval_timestamp or '—' }}</div><div class="small">Reconciled: {{ rec.reconciliation_timestamp }}</div></td>
+            </tr>
+          {% else %}
+            <tr><td colspan="8" class="text-muted">No reconciliation history yet.</td></tr>
+          {% endfor %}
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

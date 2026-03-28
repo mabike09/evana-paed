@@ -1,0 +1,230 @@
+{% extends "base.html" %}
+{% block title %}Finance · Petty Cash{% endblock %}
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+  <div>
+    <h2 class="mb-0">Finance · Petty Cash Ledger</h2>
+    <div class="text-muted">Track petty cash float, top-ups, returns, expenditures, approvals, and audit history.</div>
+  </div>
+  <div class="d-flex gap-2">
+    <a class="btn btn-outline-secondary" href="{{ url_for('finance.petty_cash_ledger', start_date=filters.start_date, end_date=filters.end_date, category=filters.category, transaction_type=filters.transaction_type, voucher_number=filters.voucher_number, payee=filters.payee, status=filters.status, entered_by=filters.entered_by, approved_by=filters.approved_by, export='excel') }}">Export Excel/CSV</a>
+    <a class="btn btn-outline-secondary" href="{{ url_for('finance.petty_cash_ledger', start_date=filters.start_date, end_date=filters.end_date, category=filters.category, transaction_type=filters.transaction_type, voucher_number=filters.voucher_number, payee=filters.payee, status=filters.status, entered_by=filters.entered_by, approved_by=filters.approved_by, export='pdf') }}">Printable Ledger PDF</a>
+    {% if can_manage_finance %}
+      <a class="btn btn-outline-primary" href="{{ url_for('finance.petty_cash_reconciliation') }}">Reconciliation</a>
+    {% endif %}
+  </div>
+</div>
+
+{% if metrics.alerts %}
+  {% for alert in metrics.alerts %}
+    <div class="alert alert-warning">{{ alert }}</div>
+  {% endfor %}
+{% endif %}
+
+<div class="row g-3 mb-4">
+  <div class="col-md-3"><div class="card h-100"><div class="card-body"><div class="text-muted small">Current cash on hand</div><div class="fs-4 fw-bold">UGX {{ '{:,.2f}'.format(metrics.current_balance) }}</div><div class="small text-muted">Alert threshold: UGX {{ '{:,.2f}'.format(low_balance_threshold) }}</div></div></div></div>
+  <div class="col-md-3"><div class="card h-100"><div class="card-body"><div class="text-muted small">Cash in</div><div class="fs-5 fw-bold text-success">UGX {{ '{:,.2f}'.format(metrics.cash_in_total) }}</div></div></div></div>
+  <div class="col-md-3"><div class="card h-100"><div class="card-body"><div class="text-muted small">Cash out</div><div class="fs-5 fw-bold text-danger">UGX {{ '{:,.2f}'.format(metrics.cash_out_total) }}</div></div></div></div>
+  <div class="col-md-3"><div class="card h-100"><div class="card-body"><div class="text-muted small">Last running balance</div><div class="fs-5 fw-bold">UGX {{ '{:,.2f}'.format(filtered_balance) }}</div><div class="small text-muted">Opening balance: UGX {{ '{:,.2f}'.format(opening_balance) }} · Negative balances are blocked.</div></div></div></div>
+</div>
+
+<div class="row g-4">
+  <div class="col-lg-4">
+    <div class="card mb-4">
+      <div class="card-header"><strong>Record petty cash transaction</strong></div>
+      <div class="card-body">
+        <form method="post" enctype="multipart/form-data" class="row g-3">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <div class="col-12">
+            <label class="form-label">Action</label>
+            <select class="form-select" name="action_mode" id="action_mode">
+              <option value="transaction">Normal transaction</option>
+              {% if can_manage_finance %}
+                <option value="initial_float">Set initial float</option>
+                <option value="top_up">Top up petty cash</option>
+                <option value="cash_returned">Record cash returned</option>
+              {% endif %}
+            </select>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Date</label>
+            <input class="form-control" type="date" name="date" value="{{ filters.end_date }}" required>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Transaction type</label>
+            <select class="form-select" name="transaction_type" id="transaction_type" required>
+              {% if can_manage_finance %}
+                <option value="cash_in">Cash in</option>
+              {% endif %}
+              <option value="cash_out" {% if not can_manage_finance %}selected{% endif %}>Cash out</option>
+            </select>
+          </div>
+          <div class="col-md-6"><label class="form-label">Voucher number</label><input class="form-control" type="text" name="voucher_number" id="voucher_number"></div>
+          <div class="col-md-6"><label class="form-label">Receipt number</label><input class="form-control" type="text" name="receipt_number" id="receipt_number"></div>
+          <div class="col-md-6"><label class="form-label">Amount</label><input class="form-control" type="number" step="0.01" min="0.01" name="amount" required></div>
+          <div class="col-md-6"><label class="form-label">Expense category</label><select class="form-select" name="expense_category" id="expense_category">{% for category in categories %}<option value="{{ category }}">{{ category|title }}</option>{% endfor %}</select></div>
+          <div class="col-12"><label class="form-label">Purpose / description</label><input class="form-control" type="text" name="purpose" required></div>
+          <div class="col-md-6"><label class="form-label">Payee / recipient</label><input class="form-control" type="text" name="payee"></div>
+          <div class="col-md-6"><label class="form-label">Approved by</label><input class="form-control" type="text" name="approved_by" placeholder="Branch manager / admin"></div>
+          <div class="col-md-6 form-check ms-3"><input class="form-check-input" type="checkbox" name="is_advance" id="is_advance"><label class="form-check-label" for="is_advance">Unaccounted advance</label></div>
+          <div class="col-md-5 form-check ms-3"><input class="form-check-input" type="checkbox" name="is_accounted" id="is_accounted"><label class="form-check-label" for="is_accounted">Advance accounted for</label></div>
+          <div class="col-12"><label class="form-label">Attachment</label><input class="form-control" type="file" name="attachment" accept=".pdf,.png,.jpg,.jpeg,.gif,.doc,.docx,.xls,.xlsx"><div class="form-text">Voucher, receipt, invoice, or accountability support document.</div></div>
+          <div class="col-12"><label class="form-label">Notes / comments</label><textarea class="form-control" name="notes" rows="2"></textarea></div>
+          <div class="col-12"><button class="btn btn-primary w-100" type="submit">Save transaction</button></div>
+        </form>
+      </div>
+    </div>
+
+    <div class="card mb-4">
+      <div class="card-header"><strong>Closed periods</strong></div>
+      <div class="card-body">
+        <ul class="mb-0">
+          {% for lock in locks %}
+            <li>Locked through <strong>{{ lock.locked_until }}</strong> by {{ lock.locked_by }}</li>
+          {% else %}
+            <li class="text-muted">No month-end locks yet.</li>
+          {% endfor %}
+        </ul>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header"><strong>Audit trail</strong></div>
+      <div class="card-body">
+        <ul class="list-group list-group-flush">
+          {% for audit in audits %}
+            <li class="list-group-item px-0">
+              <div class="fw-semibold">{{ audit.action|capitalize }} {{ audit.record_type }} #{{ audit.record_id or '—' }}</div>
+              <div class="small text-muted">{{ audit.actor_username }} ({{ audit.actor_role }}) · {{ audit.created_at }}</div>
+              <div class="small"><code>{{ audit.changes_json }}</code></div>
+            </li>
+          {% else %}
+            <li class="list-group-item px-0 text-muted">No audit entries recorded yet.</li>
+          {% endfor %}
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-8">
+    <div class="card mb-4">
+      <div class="card-header"><strong>Filters & reports</strong></div>
+      <div class="card-body">
+        <form method="get" class="row g-2 align-items-end">
+          <div class="col-md-3"><label class="form-label">Date from</label><input class="form-control" type="date" name="start_date" value="{{ filters.start_date }}"></div>
+          <div class="col-md-3"><label class="form-label">Date to</label><input class="form-control" type="date" name="end_date" value="{{ filters.end_date }}"></div>
+          <div class="col-md-3"><label class="form-label">Category</label><select class="form-select" name="category"><option value="">All</option>{% for category in categories %}<option value="{{ category }}" {% if filters.category == category %}selected{% endif %}>{{ category|title }}</option>{% endfor %}</select></div>
+          <div class="col-md-3"><label class="form-label">Type</label><select class="form-select" name="transaction_type"><option value="">All</option>{% for tx_type in transaction_types %}<option value="{{ tx_type }}" {% if filters.transaction_type == tx_type %}selected{% endif %}>{{ tx_type|replace('_',' ')|title }}</option>{% endfor %}</select></div>
+          <div class="col-md-3"><label class="form-label">Voucher no.</label><input class="form-control" type="text" name="voucher_number" value="{{ filters.voucher_number }}"></div>
+          <div class="col-md-3"><label class="form-label">Payee</label><input class="form-control" type="text" name="payee" value="{{ filters.payee }}"></div>
+          <div class="col-md-2"><label class="form-label">Status</label><select class="form-select" name="status"><option value="">All</option><option value="unreconciled" {% if filters.status == 'unreconciled' %}selected{% endif %}>Unreconciled</option><option value="reconciled" {% if filters.status == 'reconciled' %}selected{% endif %}>Reconciled</option><option value="missing_attachment" {% if filters.status == 'missing_attachment' %}selected{% endif %}>Missing attachment</option><option value="unaccounted_advance" {% if filters.status == 'unaccounted_advance' %}selected{% endif %}>Unaccounted advance</option></select></div>
+          <div class="col-md-2"><label class="form-label">Entered by</label><input class="form-control" type="text" name="entered_by" value="{{ filters.entered_by }}"></div>
+          <div class="col-md-2"><label class="form-label">Approved by</label><input class="form-control" type="text" name="approved_by" value="{{ filters.approved_by }}"></div>
+          <div class="col-md-12 d-flex gap-2"><button class="btn btn-primary" type="submit">Apply filters</button><a class="btn btn-outline-secondary" href="{{ url_for('finance.petty_cash_ledger') }}">Reset</a></div>
+        </form>
+      </div>
+    </div>
+
+    <div class="row g-3 mb-4">
+      <div class="col-md-6">
+        <div class="card h-100"><div class="card-header"><strong>Expenses by category</strong></div><div class="card-body"><table class="table table-sm mb-0"><tr><th>Category</th><th>Amount</th></tr>{% for category, amount in metrics.category_totals %}<tr><td>{{ category|title }}</td><td>UGX {{ '{:,.2f}'.format(amount) }}</td></tr>{% else %}<tr><td colspan="2" class="text-muted">No expense data.</td></tr>{% endfor %}</table></div></div>
+      </div>
+      <div class="col-md-6">
+        <div class="card h-100"><div class="card-header"><strong>Expenses by user</strong></div><div class="card-body"><table class="table table-sm mb-0"><tr><th>User</th><th>Amount</th></tr>{% for user, amount in metrics.user_totals %}<tr><td>{{ user }}</td><td>UGX {{ '{:,.2f}'.format(amount) }}</td></tr>{% else %}<tr><td colspan="2" class="text-muted">No user expense data.</td></tr>{% endfor %}</table></div></div>
+      </div>
+    </div>
+
+    <div class="row g-3 mb-4">
+      <div class="col-md-6">
+        <div class="card h-100"><div class="card-header"><strong>Monthly petty cash summary</strong></div><div class="card-body"><table class="table table-sm mb-0"><tr><th>Month</th><th>Cash in</th><th>Cash out</th></tr>{% for month, row in metrics.monthly_rows %}<tr><td>{{ month }}</td><td>UGX {{ '{:,.2f}'.format(row.cash_in) }}</td><td>UGX {{ '{:,.2f}'.format(row.cash_out) }}</td></tr>{% else %}<tr><td colspan="3" class="text-muted">No monthly history yet.</td></tr>{% endfor %}</table></div></div>
+      </div>
+      <div class="col-md-6">
+        <div class="card h-100"><div class="card-header"><strong>Exception reports</strong></div><div class="card-body small">
+          <div class="mb-2"><strong>Unreconciled transactions:</strong> {{ metrics.unreconciled|length }}</div>
+          <div class="mb-2"><strong>Unaccounted advances:</strong> {{ metrics.unaccounted_advances|length }}</div>
+          <div class="mb-2"><strong>Missing attachments:</strong> {{ metrics.missing_attachment|length }}</div>
+          <ul class="mb-0">
+            {% for item in metrics.unaccounted_advances[:5] %}
+              <li>{{ item.date }} · {{ item.payee or item.purpose }} · UGX {{ '{:,.2f}'.format(item.amount) }}</li>
+            {% else %}
+              <li class="text-muted">No open advance issues.</li>
+            {% endfor %}
+          </ul>
+        </div></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <strong>Transaction history / printable ledger</strong>
+        <span class="small text-muted">Previous balance · Amount in · Amount out · New balance</span>
+      </div>
+      <div class="card-body table-responsive">
+        <table class="table table-sm table-striped align-middle">
+          <thead>
+            <tr>
+              <th>Date</th><th>Voucher</th><th>Receipt</th><th>Type</th><th>Purpose</th><th>Category</th><th>Payee</th><th>Entered/Approved</th><th>Attachment</th><th>Notes</th><th>Prev.</th><th>In</th><th>Out</th><th>New</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in ledger_rows %}
+              {% set txn = row.transaction %}
+              <tr>
+                <td>{{ txn.date }}</td>
+                <td>{{ txn.voucher_number or '—' }}</td>
+                <td>{{ txn.receipt_number or '—' }}</td>
+                <td><span class="badge text-bg-{{ 'success' if txn.transaction_type == 'cash_in' else 'danger' }}">{{ txn.transaction_type|replace('_',' ')|title }}</span><div class="small text-muted">{{ txn.action_mode|replace('_',' ')|title }}</div></td>
+                <td>{{ txn.purpose }}</td>
+                <td>{{ txn.expense_category or '—' }}</td>
+                <td>{{ txn.payee or '—' }}</td>
+                <td><div>{{ txn.entered_by }}</div><div class="small text-muted">{{ txn.approved_by or 'Pending approval' }}</div></td>
+                <td>{% if txn.attachment_path %}<a href="{{ url_for('finance.petty_cash_attachment', transaction_id=txn.id) }}" target="_blank">View</a>{% else %}<span class="text-warning">Missing</span>{% endif %}</td>
+                <td><div>{{ txn.notes or '—' }}</div><div class="small text-muted">Reconciled: {{ 'Yes' if txn.reconciliation_id else 'No' }}</div></td>
+                <td>UGX {{ '{:,.2f}'.format(row.previous_balance) }}</td>
+                <td>UGX {{ '{:,.2f}'.format(row.amount_in) }}</td>
+                <td>UGX {{ '{:,.2f}'.format(row.amount_out) }}</td>
+                <td class="fw-semibold">UGX {{ '{:,.2f}'.format(row.new_balance) }}</td>
+              </tr>
+            {% else %}
+              <tr><td colspan="14" class="text-muted text-center">No petty cash transactions found for the selected filters.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+
+{% block scripts %}
+  {{ super() }}
+  <script>
+    (function () {
+      const actionMode = document.getElementById('action_mode');
+      const voucherInput = document.getElementById('voucher_number');
+      const receiptInput = document.getElementById('receipt_number');
+      const categoryInput = document.getElementById('expense_category');
+      const txTypeInput = document.getElementById('transaction_type');
+
+      if (!actionMode || !voucherInput || !receiptInput || !categoryInput || !txTypeInput) return;
+
+      function syncFormForAction() {
+        const isTopUpAction = ['top_up', 'initial_float', 'cash_returned'].includes(actionMode.value);
+
+        voucherInput.disabled = isTopUpAction;
+        receiptInput.disabled = isTopUpAction;
+        categoryInput.disabled = isTopUpAction;
+
+        if (isTopUpAction) {
+          voucherInput.value = '';
+          receiptInput.value = '';
+          txTypeInput.value = 'cash_in';
+        }
+      }
+
+      actionMode.addEventListener('change', syncFormForAction);
+      syncFormForAction();
+    })();
+  </script>
+{% endblock %}

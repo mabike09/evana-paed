@@ -404,6 +404,77 @@ class SmsLog(db.Model):
     created_at = db.Column(db.DateTime, default=eat_now, index=True)
 
 
+# ---------------------------
+# Finance: Petty Cash
+# ---------------------------
+class PettyCashReconciliation(db.Model):
+    __tablename__ = "petty_cash_reconciliation"
+
+    id = db.Column(db.Integer, primary_key=True)
+    reconciliation_date = db.Column(db.String(10), nullable=False, index=True)
+    reconciled_by = db.Column(db.String(150), nullable=False)
+    approved_by = db.Column(db.String(150))
+    comments = db.Column(db.Text)
+    system_balance = db.Column(db.Numeric(12, 2), nullable=False, default=0)
+    physical_cash_counted = db.Column(db.Numeric(12, 2), nullable=False, default=0)
+    receipts_accounted_expenses = db.Column(db.Numeric(12, 2), nullable=False, default=0)
+    shortage_overage = db.Column(db.Numeric(12, 2), nullable=False, default=0)
+    approval_timestamp = db.Column(db.DateTime)
+    reconciliation_timestamp = db.Column(db.DateTime, default=eat_now, nullable=False)
+
+
+class PettyCashTransaction(db.Model):
+    __tablename__ = "petty_cash_transaction"
+
+    id = db.Column(db.Integer, primary_key=True)
+    date = db.Column(db.String(10), nullable=False, index=True)
+    voucher_number = db.Column(db.String(64), index=True)
+    receipt_number = db.Column(db.String(64), index=True)
+    transaction_type = db.Column(db.String(20), nullable=False, index=True)
+    amount = db.Column(db.Numeric(12, 2), nullable=False, default=0)
+    purpose = db.Column(db.String(255), nullable=False)
+    description = db.Column(db.String(255))
+    expense_category = db.Column(db.String(80), index=True)
+    payee = db.Column(db.String(150), index=True)
+    entered_by = db.Column(db.String(150), nullable=False, index=True)
+    approved_by = db.Column(db.String(150), index=True)
+    attachment_path = db.Column(db.String(255))
+    notes = db.Column(db.Text)
+    action_mode = db.Column(db.String(40), nullable=False, default="transaction")
+    is_advance = db.Column(db.Boolean, nullable=False, default=False)
+    is_accounted = db.Column(db.Boolean, nullable=False, default=False)
+    approval_timestamp = db.Column(db.DateTime)
+    reconciled_at = db.Column(db.DateTime)
+    created_at = db.Column(db.DateTime, default=eat_now, nullable=False, index=True)
+    updated_at = db.Column(db.DateTime, default=eat_now, onupdate=eat_now, nullable=False)
+    reconciliation_id = db.Column(db.Integer, db.ForeignKey("petty_cash_reconciliation.id"), index=True)
+
+    reconciliation = db.relationship("PettyCashReconciliation", backref=db.backref("transactions", lazy=True))
+
+
+class PettyCashAuditLog(db.Model):
+    __tablename__ = "petty_cash_audit_log"
+
+    id = db.Column(db.Integer, primary_key=True)
+    action = db.Column(db.String(30), nullable=False, index=True)
+    record_type = db.Column(db.String(30), nullable=False, index=True)
+    record_id = db.Column(db.Integer, index=True)
+    actor_username = db.Column(db.String(150), nullable=False)
+    actor_role = db.Column(db.String(30))
+    changes_json = db.Column(db.Text)
+    created_at = db.Column(db.DateTime, default=eat_now, nullable=False, index=True)
+
+
+class PettyCashPeriodLock(db.Model):
+    __tablename__ = "petty_cash_period_lock"
+
+    id = db.Column(db.Integer, primary_key=True)
+    locked_until = db.Column(db.Date, nullable=False, index=True)
+    locked_by = db.Column(db.String(150), nullable=False)
+    notes = db.Column(db.String(255))
+    created_at = db.Column(db.DateTime, default=eat_now, nullable=False)
+
+
 # ===========================
 # NEW: Price Books
 # ===========================
