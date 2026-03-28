@@ -287,22 +287,32 @@ def petty_cash_ledger():
             flash("Only accountant/admin can set float, top up cash, or record cash returned.", "danger")
             return redirect(url_for("finance.petty_cash_ledger"))
 
+        voucher_number = (request.form.get("voucher_number") or "").strip()
+        receipt_number = (request.form.get("receipt_number") or "").strip()
+
         if action_mode == "initial_float":
             purpose = purpose or "Initial petty cash float"
             category = "miscellaneous"
+            voucher_number = ""
+            receipt_number = ""
+            transaction_type = "cash_in"
         elif action_mode == "top_up":
             purpose = purpose or "Petty cash top-up"
             category = "miscellaneous"
+            voucher_number = ""
+            receipt_number = ""
             transaction_type = "cash_in"
         elif action_mode == "cash_returned":
             purpose = purpose or "Cash returned to petty cash"
             category = "miscellaneous"
+            voucher_number = ""
+            receipt_number = ""
             transaction_type = "cash_in"
 
         txn = PettyCashTransaction(
             date=str(txn_date),
-            voucher_number=(request.form.get("voucher_number") or "").strip(),
-            receipt_number=(request.form.get("receipt_number") or "").strip(),
+            voucher_number=voucher_number,
+            receipt_number=receipt_number,
             transaction_type=transaction_type,
             amount=amount,
             purpose=purpose,

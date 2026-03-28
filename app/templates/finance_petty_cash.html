@@ -37,7 +37,7 @@
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <div class="col-12">
             <label class="form-label">Action</label>
-            <select class="form-select" name="action_mode">
+            <select class="form-select" name="action_mode" id="action_mode">
               <option value="transaction">Normal transaction</option>
               {% if can_manage_finance %}
                 <option value="initial_float">Set initial float</option>
@@ -52,15 +52,15 @@
           </div>
           <div class="col-md-6">
             <label class="form-label">Transaction type</label>
-            <select class="form-select" name="transaction_type" required>
+            <select class="form-select" name="transaction_type" id="transaction_type" required>
               <option value="cash_in">Cash in</option>
               <option value="cash_out">Cash out</option>
             </select>
           </div>
-          <div class="col-md-6"><label class="form-label">Voucher number</label><input class="form-control" type="text" name="voucher_number"></div>
-          <div class="col-md-6"><label class="form-label">Receipt number</label><input class="form-control" type="text" name="receipt_number"></div>
+          <div class="col-md-6"><label class="form-label">Voucher number</label><input class="form-control" type="text" name="voucher_number" id="voucher_number"></div>
+          <div class="col-md-6"><label class="form-label">Receipt number</label><input class="form-control" type="text" name="receipt_number" id="receipt_number"></div>
           <div class="col-md-6"><label class="form-label">Amount</label><input class="form-control" type="number" step="0.01" min="0.01" name="amount" required></div>
-          <div class="col-md-6"><label class="form-label">Expense category</label><select class="form-select" name="expense_category">{% for category in categories %}<option value="{{ category }}">{{ category|title }}</option>{% endfor %}</select></div>
+          <div class="col-md-6"><label class="form-label">Expense category</label><select class="form-select" name="expense_category" id="expense_category">{% for category in categories %}<option value="{{ category }}">{{ category|title }}</option>{% endfor %}</select></div>
           <div class="col-12"><label class="form-label">Purpose / description</label><input class="form-control" type="text" name="purpose" required></div>
           <div class="col-md-6"><label class="form-label">Payee / recipient</label><input class="form-control" type="text" name="payee"></div>
           <div class="col-md-6"><label class="form-label">Approved by</label><input class="form-control" type="text" name="approved_by" placeholder="Branch manager / admin"></div>
@@ -192,4 +192,37 @@
     </div>
   </div>
 </div>
+{% endblock %}
+
+
+{% block scripts %}
+  {{ super() }}
+  <script>
+    (function () {
+      const actionMode = document.getElementById('action_mode');
+      const voucherInput = document.getElementById('voucher_number');
+      const receiptInput = document.getElementById('receipt_number');
+      const categoryInput = document.getElementById('expense_category');
+      const txTypeInput = document.getElementById('transaction_type');
+
+      if (!actionMode || !voucherInput || !receiptInput || !categoryInput || !txTypeInput) return;
+
+      function syncFormForAction() {
+        const isTopUpAction = ['top_up', 'initial_float', 'cash_returned'].includes(actionMode.value);
+
+        voucherInput.disabled = isTopUpAction;
+        receiptInput.disabled = isTopUpAction;
+        categoryInput.disabled = isTopUpAction;
+
+        if (isTopUpAction) {
+          voucherInput.value = '';
+          receiptInput.value = '';
+          txTypeInput.value = 'cash_in';
+        }
+      }
+
+      actionMode.addEventListener('change', syncFormForAction);
+      syncFormForAction();
+    })();
+  </script>
 {% endblock %}
