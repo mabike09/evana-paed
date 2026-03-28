@@ -53,8 +53,10 @@
           <div class="col-md-6">
             <label class="form-label">Transaction type</label>
             <select class="form-select" name="transaction_type" id="transaction_type" required>
-              <option value="cash_in">Cash in</option>
-              <option value="cash_out">Cash out</option>
+              {% if can_manage_finance %}
+                <option value="cash_in">Cash in</option>
+              {% endif %}
+              <option value="cash_out" {% if not can_manage_finance %}selected{% endif %}>Cash out</option>
             </select>
           </div>
           <div class="col-md-6"><label class="form-label">Voucher number</label><input class="form-control" type="text" name="voucher_number" id="voucher_number"></div>

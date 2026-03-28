@@ -270,6 +270,9 @@ def petty_cash_ledger():
         if transaction_type not in PETTY_CASH_TXN_TYPES:
             flash("Transaction type must be cash in or cash out.", "warning")
             return redirect(url_for("finance.petty_cash_ledger"))
+        if transaction_type == "cash_in" and not _can_manage_finance():
+            flash("Only accountant/admin can record cash in transactions.", "danger")
+            return redirect(url_for("finance.petty_cash_ledger"))
         if amount <= 0:
             flash("Amount must be greater than zero.", "warning")
             return redirect(url_for("finance.petty_cash_ledger"))
