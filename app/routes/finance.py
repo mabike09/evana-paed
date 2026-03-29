@@ -10,6 +10,7 @@ from decimal import Decimal
 
 from flask import Blueprint, Response, current_app, flash, redirect, render_template, request, send_file, url_for
 from flask_login import current_user, login_required
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy import inspect, text
 from werkzeug.utils import secure_filename
 
@@ -422,8 +423,13 @@ def accounts_payable():
     if request.method == "POST":
         action = (request.form.get("action") or "").strip()
         if action == "create_supplier":
+            supplier_name = (request.form.get("supplier_name") or "").strip()
+            existing_supplier = APSupplier.query.filter(APSupplier.supplier_name.ilike(supplier_name)).first() if supplier_name else None
+            if existing_supplier:
+                flash("Supplier already exists. Use the existing supplier record instead of creating a duplicate.", "warning")
+                return redirect(url_for("finance.accounts_payable"))
             supplier = APSupplier(
-                supplier_name=(request.form.get("supplier_name") or "").strip(),
+                supplier_name=supplier_name,
                 contact_person=(request.form.get("contact_person") or "").strip(),
                 phone_number=(request.form.get("phone_number") or "").strip(),
                 email=(request.form.get("email") or "").strip(),
@@ -439,9 +445,14 @@ def accounts_payable():
                 flash("Supplier name is required.", "warning")
                 return redirect(url_for("finance.accounts_payable"))
             db.session.add(supplier)
-            db.session.flush()
-            _ap_log("create", "supplier", supplier.id, {"supplier_name": supplier.supplier_name})
-            db.session.commit()
+            try:
+                db.session.flush()
+                _ap_log("create", "supplier", supplier.id, {"supplier_name": supplier.supplier_name})
+                db.session.commit()
+            except IntegrityError:
+                db.session.rollback()
+                flash("Supplier already exists. Duplicate supplier names are not allowed.", "warning")
+                return redirect(url_for("finance.accounts_payable"))
             flash("Supplier saved.", "success")
             return redirect(url_for("finance.accounts_payable"))
 
@@ -476,7 +487,12 @@ def accounts_payable():
                 flash("Duplicate warning: another invoice has same amount and date.", "warning")
 
             db.session.add(bill)
-            db.session.flush()
+            try:
+                db.session.flush()
+            except IntegrityError:
+                db.session.rollback()
+                flash("Duplicate invoice number for this supplier detected. Bill was not saved.", "warning")
+                return redirect(url_for("finance.accounts_payable"))
             line_descriptions = request.form.getlist("line_description[]")
             line_amounts = request.form.getlist("line_amount[]")
             line_categories = request.form.getlist("line_category[]")
@@ -501,7 +517,12 @@ def accounts_payable():
                 db.session.add(APAttachment(bill_id=bill.id, document_type=doc_type, file_path=path, uploaded_by=getattr(current_user, "username", "")))
 
             _ap_log("create", "bill", bill.id, {"supplier": supplier.supplier_name, "invoice_number": invoice_number})
-            db.session.commit()
+            try:
+                db.session.commit()
+            except IntegrityError:
+                db.session.rollback()
+                flash("Bill could not be saved because it conflicts with an existing record.", "warning")
+                return redirect(url_for("finance.accounts_payable"))
             flash("Bill captured successfully.", "success")
             return redirect(url_for("finance.accounts_payable"))
 
