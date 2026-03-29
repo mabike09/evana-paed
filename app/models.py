@@ -475,6 +475,133 @@ class PettyCashPeriodLock(db.Model):
     created_at = db.Column(db.DateTime, default=eat_now, nullable=False)
 
 
+# ---------------------------
+# Finance: Accounts Payable
+# ---------------------------
+class APSupplier(db.Model):
+    __tablename__ = "ap_supplier"
+
+    id = db.Column(db.Integer, primary_key=True)
+    supplier_name = db.Column(db.String(180), nullable=False, unique=True, index=True)
+    contact_person = db.Column(db.String(150))
+    phone_number = db.Column(db.String(40))
+    email = db.Column(db.String(150))
+    physical_address = db.Column(db.String(255))
+    category = db.Column(db.String(80), nullable=False, index=True)
+    payment_terms = db.Column(db.String(40), nullable=False, default="30 days")
+    payment_details = db.Column(db.String(255))
+    tax_details = db.Column(db.String(255))
+    is_active = db.Column(db.Boolean, nullable=False, default=True, index=True)
+    opening_balance = db.Column(db.Numeric(12, 2), nullable=False, default=0)
+    created_at = db.Column(db.DateTime, default=eat_now, nullable=False)
+    updated_at = db.Column(db.DateTime, default=eat_now, onupdate=eat_now, nullable=False)
+
+    bills = db.relationship("APBill", backref="supplier", lazy=True, cascade="all, delete-orphan")
+    templates = db.relationship("APRecurringTemplate", backref="supplier", lazy=True, cascade="all, delete-orphan")
+
+
+class APBill(db.Model):
+    __tablename__ = "ap_bill"
+
+    id = db.Column(db.Integer, primary_key=True)
+    supplier_id = db.Column(db.Integer, db.ForeignKey("ap_supplier.id"), nullable=False, index=True)
+    invoice_number = db.Column(db.String(80), nullable=False, index=True)
+    invoice_date = db.Column(db.String(10), nullable=False, index=True)
+    due_date = db.Column(db.String(10), nullable=False, index=True)
+    expense_category = db.Column(db.String(80), nullable=False, index=True)
+    description = db.Column(db.String(255))
+    invoice_total = db.Column(db.Numeric(12, 2), nullable=False, default=0)
+    tax_amount = db.Column(db.Numeric(12, 2), nullable=False, default=0)
+    submitted_by = db.Column(db.String(150), nullable=False, index=True)
+    submitted_date = db.Column(db.String(10), nullable=False, index=True)
+    status = db.Column(db.String(20), nullable=False, default="unpaid", index=True)
+    is_recurring = db.Column(db.Boolean, nullable=False, default=False, index=True)
+    recurring_template_id = db.Column(db.Integer, db.ForeignKey("ap_recurring_template.id"), index=True)
+    parent_bill_id = db.Column(db.Integer, db.ForeignKey("ap_bill.id"), index=True)
+    created_by = db.Column(db.String(150), nullable=False)
+    updated_by = db.Column(db.String(150))
+    created_at = db.Column(db.DateTime, default=eat_now, nullable=False, index=True)
+    updated_at = db.Column(db.DateTime, default=eat_now, onupdate=eat_now, nullable=False)
+
+    lines = db.relationship("APBillLine", backref="bill", lazy=True, cascade="all, delete-orphan")
+    attachments = db.relationship("APAttachment", backref="bill", lazy=True, cascade="all, delete-orphan")
+    payments = db.relationship("APPayment", backref="bill", lazy=True, cascade="all, delete-orphan")
+    adjustments = db.relationship("APBill", backref=db.backref("parent_bill", remote_side=[id]), lazy=True)
+
+    __table_args__ = (
+        db.UniqueConstraint("supplier_id", "invoice_number", name="uq_ap_supplier_invoice"),
+    )
+
+
+class APBillLine(db.Model):
+    __tablename__ = "ap_bill_line"
+
+    id = db.Column(db.Integer, primary_key=True)
+    bill_id = db.Column(db.Integer, db.ForeignKey("ap_bill.id"), nullable=False, index=True)
+    line_description = db.Column(db.String(255), nullable=False)
+    amount = db.Column(db.Numeric(12, 2), nullable=False, default=0)
+    expense_category = db.Column(db.String(80), nullable=False, index=True)
+
+
+class APAttachment(db.Model):
+    __tablename__ = "ap_attachment"
+
+    id = db.Column(db.Integer, primary_key=True)
+    bill_id = db.Column(db.Integer, db.ForeignKey("ap_bill.id"), nullable=False, index=True)
+    document_type = db.Column(db.String(60), nullable=False, index=True)
+    file_path = db.Column(db.String(255), nullable=False)
+    uploaded_by = db.Column(db.String(150), nullable=False)
+    uploaded_at = db.Column(db.DateTime, default=eat_now, nullable=False)
+
+
+class APPayment(db.Model):
+    __tablename__ = "ap_payment"
+
+    id = db.Column(db.Integer, primary_key=True)
+    bill_id = db.Column(db.Integer, db.ForeignKey("ap_bill.id"), nullable=False, index=True)
+    payment_date = db.Column(db.String(10), nullable=False, index=True)
+    amount = db.Column(db.Numeric(12, 2), nullable=False, default=0)
+    method = db.Column(db.String(30), nullable=False, index=True)
+    reference_number = db.Column(db.String(80), index=True)
+    paying_account = db.Column(db.String(120))
+    processed_by = db.Column(db.String(150), nullable=False)
+    proof_attachment_path = db.Column(db.String(255))
+    created_at = db.Column(db.DateTime, default=eat_now, nullable=False)
+
+
+class APRecurringTemplate(db.Model):
+    __tablename__ = "ap_recurring_template"
+
+    id = db.Column(db.Integer, primary_key=True)
+    supplier_id = db.Column(db.Integer, db.ForeignKey("ap_supplier.id"), nullable=False, index=True)
+    template_name = db.Column(db.String(150), nullable=False)
+    expense_category = db.Column(db.String(80), nullable=False)
+    amount = db.Column(db.Numeric(12, 2), nullable=False, default=0)
+    tax_amount = db.Column(db.Numeric(12, 2), nullable=False, default=0)
+    frequency = db.Column(db.String(20), nullable=False, default="monthly")
+    due_day = db.Column(db.Integer, nullable=False, default=1)
+    reminder_days_before = db.Column(db.Integer, nullable=False, default=3)
+    is_active = db.Column(db.Boolean, nullable=False, default=True, index=True)
+    last_generated_on = db.Column(db.String(10), index=True)
+    created_by = db.Column(db.String(150), nullable=False)
+    created_at = db.Column(db.DateTime, default=eat_now, nullable=False)
+
+    bills = db.relationship("APBill", backref="recurring_template", lazy=True)
+
+
+class APAuditLog(db.Model):
+    __tablename__ = "ap_audit_log"
+
+    id = db.Column(db.Integer, primary_key=True)
+    action = db.Column(db.String(40), nullable=False, index=True)
+    entity = db.Column(db.String(40), nullable=False, index=True)
+    entity_id = db.Column(db.Integer, index=True)
+    actor_username = db.Column(db.String(150), nullable=False)
+    actor_role = db.Column(db.String(30))
+    change_summary = db.Column(db.Text)
+    created_at = db.Column(db.DateTime, default=eat_now, nullable=False, index=True)
+
+
 # ===========================
 # NEW: Price Books
 # ===========================

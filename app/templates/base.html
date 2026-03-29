@@ -56,6 +56,9 @@
               <ul class="dropdown-menu">
                 <li><a class="dropdown-item" href="{{ url_for('finance.petty_cash_ledger') }}">Petty Cash</a></li>
                 {% if current_user.role in ['accountant','admin'] %}
+                  <li><a class="dropdown-item" href="{{ url_for('finance.accounts_payable') }}">Accounts Payable</a></li>
+                {% endif %}
+                {% if current_user.role in ['accountant','admin'] %}
                   <li><a class="dropdown-item" href="{{ url_for('finance.petty_cash_reconciliation') }}">Reconciliation</a></li>
                 {% endif %}
               </ul>
