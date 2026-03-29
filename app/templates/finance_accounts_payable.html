@@ -1,0 +1,164 @@
+{% extends "base.html" %}
+{% block title %}Finance · Accounts Payable{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <div>
+    <h2 class="mb-0">Finance · Accounts Payable (Single Clinic)</h2>
+    <div class="text-muted">No branch split is used; all suppliers and bills belong to one clinic location.</div>
+  </div>
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-md-3"><div class="card"><div class="card-body"><div class="small text-muted">Total outstanding</div><div class="fs-5 fw-bold">UGX {{ '{:,.2f}'.format(total_outstanding) }}</div></div></div></div>
+  <div class="col-md-3"><div class="card"><div class="card-body"><div class="small text-muted">Overdue</div><div class="fs-5 fw-bold text-danger">UGX {{ '{:,.2f}'.format(aging['1-30'] + aging['31-60'] + aging['61-90'] + aging['90+']) }}</div></div></div></div>
+  <div class="col-md-3"><div class="card"><div class="card-body"><div class="small text-muted">Due this week</div><div class="fs-5 fw-bold">{{ due_this_week|length }}</div></div></div></div>
+  <div class="col-md-3"><div class="card"><div class="card-body"><div class="small text-muted">Monthly payments made</div><div class="fs-5 fw-bold">UGX {{ '{:,.2f}'.format(monthly_payments) }}</div></div></div></div>
+</div>
+
+{% if reminders %}
+<div class="alert alert-info"><strong>Recurring reminders:</strong> {{ reminders|join(', ') }}</div>
+{% endif %}
+{% if duplicate_refs %}
+<div class="alert alert-warning"><strong>Duplicate control alerts:</strong> {{ duplicate_refs|length }} record(s) share invoice references that appear in paid records.</div>
+{% endif %}
+
+<div class="row g-4">
+  <div class="col-lg-4">
+    <div class="card mb-3"><div class="card-header"><strong>Supplier & creditor management</strong></div><div class="card-body">
+      <form method="post" class="row g-2">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="create_supplier">
+        <div class="col-12"><input class="form-control" name="supplier_name" placeholder="Supplier name" required></div>
+        <div class="col-12"><input class="form-control" name="contact_person" placeholder="Contact person"></div>
+        <div class="col-6"><input class="form-control" name="phone_number" placeholder="Phone"></div>
+        <div class="col-6"><input class="form-control" name="email" placeholder="Email"></div>
+        <div class="col-12"><input class="form-control" name="physical_address" placeholder="Physical address"></div>
+        <div class="col-6"><select class="form-select" name="category">{% for c in supplier_categories %}<option value="{{ c }}">{{ c|title }}</option>{% endfor %}</select></div>
+        <div class="col-6"><select class="form-select" name="payment_terms">{% for p in payment_terms %}<option value="{{ p }}">{{ p|title }}</option>{% endfor %}</select></div>
+        <div class="col-12"><input class="form-control" name="payment_details" placeholder="Bank / mobile money details"></div>
+        <div class="col-12"><input class="form-control" name="tax_details" placeholder="Tax details"></div>
+        <div class="col-6"><input class="form-control" name="opening_balance" type="number" step="0.01" value="0" placeholder="Opening balance"></div>
+        <div class="col-6 form-check mt-2 ms-1"><input class="form-check-input" type="checkbox" checked name="is_active" id="sup_active"><label class="form-check-label" for="sup_active">Active</label></div>
+        <div class="col-12"><button class="btn btn-primary w-100" type="submit">Save supplier</button></div>
+      </form>
+    </div></div>
+
+    <div class="card"><div class="card-header"><strong>Recurring expense templates</strong></div><div class="card-body">
+      <form method="post" class="row g-2">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="create_recurring">
+        <div class="col-12"><select class="form-select" name="supplier_id" required><option value="">Supplier</option>{% for s in suppliers %}<option value="{{ s.id }}">{{ s.supplier_name }}</option>{% endfor %}</select></div>
+        <div class="col-12"><input class="form-control" name="template_name" placeholder="Template name (e.g., rent)" required></div>
+        <div class="col-12"><select class="form-select" name="expense_category">{% for c in expense_categories %}<option value="{{ c }}">{{ c|title }}</option>{% endfor %}</select></div>
+        <div class="col-6"><input class="form-control" type="number" step="0.01" name="amount" placeholder="Amount" required></div>
+        <div class="col-6"><input class="form-control" type="number" step="0.01" name="tax_amount" value="0" placeholder="Tax"></div>
+        <div class="col-6"><input class="form-control" type="number" min="1" max="28" name="due_day" value="1" placeholder="Due day"></div>
+        <div class="col-6"><input class="form-control" type="number" min="0" name="reminder_days_before" value="3" placeholder="Reminder days"></div>
+        <div class="col-12 form-check ms-1"><input class="form-check-input" type="checkbox" checked name="is_active" id="tmpl_active"><label class="form-check-label" for="tmpl_active">Active recurring bill</label></div>
+        <div class="col-12"><button class="btn btn-outline-primary w-100" type="submit">Save recurring template</button></div>
+      </form>
+    </div></div>
+  </div>
+
+  <div class="col-lg-8">
+    <div class="card mb-3"><div class="card-header"><strong>Bill entry and invoice capture</strong></div><div class="card-body">
+      <form method="post" enctype="multipart/form-data" class="row g-2">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="create_bill">
+        <div class="col-md-4"><select class="form-select" name="supplier_id" required><option value="">Supplier</option>{% for s in suppliers %}<option value="{{ s.id }}">{{ s.supplier_name }}</option>{% endfor %}</select></div>
+        <div class="col-md-4"><input class="form-control" name="invoice_number" placeholder="Invoice number" required></div>
+        <div class="col-md-4"><select class="form-select" name="expense_category" required>{% for c in expense_categories %}<option value="{{ c }}">{{ c|title }}</option>{% endfor %}</select></div>
+        <div class="col-md-4"><label class="form-label">Invoice date</label><input class="form-control" type="date" name="invoice_date" value="{{ today }}" required></div>
+        <div class="col-md-4"><label class="form-label">Due date</label><input class="form-control" type="date" name="due_date" value="{{ today }}" required></div>
+        <div class="col-md-4"><label class="form-label">Submitted date</label><input class="form-control" type="date" name="submitted_date" value="{{ today }}" required></div>
+        <div class="col-md-4"><input class="form-control" type="number" step="0.01" name="invoice_total" placeholder="Invoice total" required></div>
+        <div class="col-md-4"><input class="form-control" type="number" step="0.01" name="tax_amount" value="0" placeholder="Tax/VAT"></div>
+        <div class="col-md-4"><input class="form-control" name="submitted_by" placeholder="Person submitted"></div>
+        <div class="col-12"><input class="form-control" name="description" placeholder="Goods/services description"></div>
+        <div class="col-md-5"><input class="form-control" name="line_description[]" placeholder="Line 1 description"></div>
+        <div class="col-md-3"><input class="form-control" type="number" step="0.01" name="line_amount[]" placeholder="Line 1 amount"></div>
+        <div class="col-md-4"><select class="form-select" name="line_category[]">{% for c in expense_categories %}<option value="{{ c }}">{{ c|title }}</option>{% endfor %}</select></div>
+        <div class="col-md-5"><input class="form-control" name="line_description[]" placeholder="Line 2 description (optional)"></div>
+        <div class="col-md-3"><input class="form-control" type="number" step="0.01" name="line_amount[]" placeholder="Line 2 amount"></div>
+        <div class="col-md-4"><select class="form-select" name="line_category[]">{% for c in expense_categories %}<option value="{{ c }}">{{ c|title }}</option>{% endfor %}</select></div>
+        <div class="col-md-4"><select class="form-select" name="document_type">{% for t in attachment_types %}<option value="{{ t }}">{{ t|title }}</option>{% endfor %}</select></div>
+        <div class="col-md-8"><input class="form-control" type="file" name="attachments" multiple></div>
+        <div class="col-12"><button class="btn btn-success" type="submit">Capture bill</button></div>
+      </form>
+    </div></div>
+
+    <div class="card mb-3"><div class="card-header"><strong>Aging tracker</strong></div><div class="card-body table-responsive">
+      <table class="table table-sm mb-0"><tr><th>Current</th><th>1–30</th><th>31–60</th><th>61–90</th><th>90+</th></tr><tr><td>UGX {{ '{:,.2f}'.format(aging['current']) }}</td><td>UGX {{ '{:,.2f}'.format(aging['1-30']) }}</td><td>UGX {{ '{:,.2f}'.format(aging['31-60']) }}</td><td>UGX {{ '{:,.2f}'.format(aging['61-90']) }}</td><td>UGX {{ '{:,.2f}'.format(aging['90+']) }}</td></tr></table>
+    </div></div>
+
+    <div class="card mb-3"><div class="card-header"><strong>Bills, balances, approvals, and payments</strong></div><div class="card-body table-responsive">
+      <table class="table table-sm align-middle">
+        <thead><tr><th>Supplier</th><th>Invoice</th><th>Due</th><th>Total</th><th>Paid</th><th>Balance</th><th>Status</th><th>Attachments</th><th>Payment</th><th>Admin actions</th></tr></thead>
+        <tbody>
+          {% for bill in bills %}
+          <tr>
+            <td>{{ bill.supplier.supplier_name }}</td>
+            <td>{{ bill.invoice_number }}<div class="small text-muted">{{ bill.expense_category|title }}</div></td>
+            <td>{{ bill.due_date }}</td>
+            <td>UGX {{ '{:,.2f}'.format(bill.invoice_total) }}</td>
+            <td>UGX {{ '{:,.2f}'.format(ap_bill_paid_total(bill)) }}</td>
+            <td class="fw-semibold">UGX {{ '{:,.2f}'.format(ap_bill_balance(bill)) }}</td>
+            <td><span class="badge text-bg-{{ 'success' if bill.status == 'paid' else ('warning' if bill.status == 'partial' else 'danger') }}">{{ bill.status|title }}</span><div class="small text-muted">{{ ap_bill_bucket(bill, today) }}</div></td>
+            <td>{% for att in bill.attachments %}<div><a href="{{ url_for('finance.ap_attachment', attachment_id=att.id) }}" target="_blank">{{ att.document_type }}</a></div>{% else %}<span class="text-muted">No docs</span>{% endfor %}</td>
+            <td>
+              <form method="post" enctype="multipart/form-data" class="d-grid gap-1">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="record_payment"><input type="hidden" name="bill_id" value="{{ bill.id }}">
+                <input class="form-control form-control-sm" type="date" name="payment_date" value="{{ today }}" required>
+                <input class="form-control form-control-sm" type="number" step="0.01" name="amount" placeholder="Amount" required>
+                <select class="form-select form-select-sm" name="method">{% for m in payment_methods %}<option value="{{ m }}">{{ m|title }}</option>{% endfor %}</select>
+                <input class="form-control form-control-sm" name="reference_number" placeholder="Reference #">
+                <input class="form-control form-control-sm" name="paying_account" placeholder="Account/cashbox">
+                <input class="form-control form-control-sm" name="processed_by" placeholder="Processed by" value="{{ current_user.username }}">
+                <input class="form-control form-control-sm" type="file" name="payment_proof">
+                <button class="btn btn-sm btn-outline-primary" type="submit">Post</button>
+              </form>
+              {% for pay in bill.payments %}
+                <div class="small mt-1">{{ pay.payment_date }} · UGX {{ '{:,.2f}'.format(pay.amount) }} · {{ pay.method|title }} {% if pay.proof_attachment_path %}<a href="{{ url_for('finance.ap_payment_proof', payment_id=pay.id) }}" target="_blank">proof</a>{% endif %}</div>
+              {% endfor %}
+            </td>
+            <td>
+              {% if is_admin %}
+              <form method="post" action="{{ url_for('finance.ap_bill_edit', bill_id=bill.id) }}" class="mb-1">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input class="form-control form-control-sm mb-1" type="date" name="due_date" value="{{ bill.due_date }}">
+                <input class="form-control form-control-sm mb-1" name="description" value="{{ bill.description }}">
+                <input class="form-control form-control-sm mb-1" type="number" step="0.01" name="invoice_total" value="{{ bill.invoice_total }}">
+                <input class="form-control form-control-sm mb-1" type="number" step="0.01" name="tax_amount" value="{{ bill.tax_amount }}">
+                <select class="form-select form-select-sm mb-1" name="expense_category">{% for c in expense_categories %}<option value="{{ c }}" {% if bill.expense_category == c %}selected{% endif %}>{{ c|title }}</option>{% endfor %}</select>
+                <button class="btn btn-sm btn-outline-warning w-100" type="submit">Edit</button>
+              </form>
+              <form method="post" action="{{ url_for('finance.ap_bill_delete', bill_id=bill.id) }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button class="btn btn-sm btn-outline-danger w-100" type="submit" onclick="return confirm('Delete this invoice?')">Delete</button>
+              </form>
+              {% else %}
+                <span class="text-muted small">Admin only</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% else %}
+          <tr><td colspan="10" class="text-muted text-center">No bills yet.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div></div>
+
+    <div class="card"><div class="card-header"><strong>Creditor ledger, dashboard slices, audit trail & downloadable reports</strong></div><div class="card-body">
+      <div class="row">
+        <div class="col-md-6"><h6>By supplier</h6><ul>{% for supplier, amount in supplier_totals %}<li>{{ supplier }}: UGX {{ '{:,.2f}'.format(amount) }}</li>{% else %}<li class="text-muted">No outstanding balances.</li>{% endfor %}</ul></div>
+        <div class="col-md-6"><h6>By expense category</h6><ul>{% for category, amount in category_totals %}<li>{{ category|title }}: UGX {{ '{:,.2f}'.format(amount) }}</li>{% else %}<li class="text-muted">No category balances.</li>{% endfor %}</ul></div>
+      </div>
+      <h6>Recent AP audit log</h6>
+      <ul>{% for audit in audits %}<li>{{ audit.created_at }} · {{ audit.actor_username }} · {{ audit.action }} {{ audit.entity }} #{{ audit.entity_id }} <code>{{ audit.change_summary }}</code></li>{% else %}<li class="text-muted">No audit records yet.</li>{% endfor %}</ul>
+      <div class="d-flex gap-2">
+        <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('finance.accounts_payable', report='aging') }}">Payables aging report</a>
+        <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('finance.accounts_payable', report='unpaid') }}">Unpaid bills report</a>
+        <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('finance.accounts_payable', report='payment_history') }}">Payment history report</a>
+        <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('finance.accounts_payable', report='monthly') }}">Monthly AP summary</a>
+      </div>
+    </div></div>
+  </div>
+</div>
+{% endblock %}
