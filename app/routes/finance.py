@@ -5,7 +5,7 @@ import io
 import json
 import os
 from collections import defaultdict
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 
 from flask import Blueprint, Response, current_app, flash, redirect, render_template, request, send_file, url_for
@@ -14,7 +14,19 @@ from sqlalchemy import inspect, text
 from werkzeug.utils import secure_filename
 
 from ..extensions import db
-from ..models import PettyCashAuditLog, PettyCashReconciliation, PettyCashTransaction, PettyCashPeriodLock
+from ..models import (
+    APAttachment,
+    APAuditLog,
+    APBill,
+    APBillLine,
+    APPayment,
+    APRecurringTemplate,
+    APSupplier,
+    PettyCashAuditLog,
+    PettyCashPeriodLock,
+    PettyCashReconciliation,
+    PettyCashTransaction,
+)
 from ..permissions import roles_required
 from ..timezone import eat_now, eat_today
 
@@ -37,6 +49,48 @@ PETTY_CASH_TXN_TYPES = ["cash_in", "cash_out"]
 ENTRY_ROLES = {"reception", "receptionist", "nurse", "branch_manager", "branch manager", "admin", "accountant"}
 FINANCE_MANAGER_ROLES = {"admin", "accountant"}
 LOW_BALANCE_THRESHOLD = Decimal("100000.00")
+AP_SUPPLIER_CATEGORIES = [
+    "drugs and medical supplies",
+    "laboratory supplies",
+    "equipment vendors",
+    "utility providers",
+    "rent/landlord",
+    "marketing/service providers",
+    "maintenance and repair providers",
+    "transport and fuel providers",
+    "casual service providers",
+]
+AP_PAYMENT_TERMS = ["7 days", "14 days", "30 days", "cash on delivery"]
+AP_PAYMENT_METHODS = ["cash", "bank transfer", "mobile money", "cheque", "eft"]
+AP_EXPENSE_CATEGORIES = [
+    "drug supplies",
+    "laboratory supplies",
+    "staff welfare",
+    "utilities",
+    "rent",
+    "repairs and maintenance",
+    "fuel and transport",
+    "cleaning supplies",
+    "marketing",
+    "professional fees",
+    "equipment purchase",
+    "equipment servicing",
+    "petty cash",
+    "referral commission",
+    "stationary",
+    "office supplies",
+]
+AP_ATTACHMENT_TYPES = [
+    "supplier invoice",
+    "delivery note",
+    "signed goods received note",
+    "requisition form",
+    "local purchase order",
+    "approval note",
+    "contract or service agreement",
+    "payment proof",
+    "supplier statement",
+]
 
 
 def _money(value: Decimal | int | float | str | None) -> Decimal:
@@ -79,6 +133,118 @@ def _log_action(action: str, record_type: str, record_id: int | None, changes: d
             changes_json=json.dumps(changes, default=str),
         )
     )
+
+
+def _ap_attachment_folder() -> str:
+    folder = os.path.join(current_app.config["UPLOAD_FOLDER"], "accounts_payable")
+    os.makedirs(folder, exist_ok=True)
+    return folder
+
+
+def _ap_log(action: str, entity: str, entity_id: int | None, summary: dict):
+    db.session.add(
+        APAuditLog(
+            action=action,
+            entity=entity,
+            entity_id=entity_id,
+            actor_username=getattr(current_user, "username", "system"),
+            actor_role=getattr(current_user, "role", ""),
+            change_summary=json.dumps(summary, default=str),
+        )
+    )
+
+
+def _ap_save_attachment(file_storage):
+    if not file_storage or not file_storage.filename:
+        return None
+    filename = secure_filename(file_storage.filename)
+    if not _allowed_attachment(filename):
+        raise ValueError("Unsupported attachment type.")
+    stamped = f"{eat_now().strftime('%Y%m%d%H%M%S')}_{filename}"
+    full_path = os.path.join(_ap_attachment_folder(), stamped)
+    file_storage.save(full_path)
+    return os.path.join("accounts_payable", stamped)
+
+
+def _ap_bill_paid_total(bill: APBill) -> Decimal:
+    return _money(sum((_money(p.amount) for p in bill.payments), Decimal("0.00")))
+
+
+def _ap_bill_balance(bill: APBill) -> Decimal:
+    return _money(_money(bill.invoice_total) - _ap_bill_paid_total(bill))
+
+
+def _ap_bill_bucket(bill: APBill, today: date) -> str:
+    balance = _ap_bill_balance(bill)
+    if balance <= 0:
+        return "paid"
+    due = _parse_date(bill.due_date, today)
+    if not due or due >= today:
+        return "current"
+    overdue_days = (today - due).days
+    if overdue_days <= 30:
+        return "1-30"
+    if overdue_days <= 60:
+        return "31-60"
+    if overdue_days <= 90:
+        return "61-90"
+    return "90+"
+
+
+def _ap_refresh_status(bill: APBill):
+    balance = _ap_bill_balance(bill)
+    if balance <= 0:
+        bill.status = "paid"
+    elif balance < _money(bill.invoice_total):
+        bill.status = "partial"
+    else:
+        bill.status = "unpaid"
+
+
+def _ap_generate_recurring_bills(today: date):
+    templates = APRecurringTemplate.query.filter(APRecurringTemplate.is_active.is_(True)).all()
+    for template in templates:
+        if template.frequency != "monthly":
+            continue
+        due_day = min(max(1, template.due_day or 1), 28)
+        due_date = date(today.year, today.month, due_day)
+        due_date_raw = str(due_date)
+        existing = APBill.query.filter(
+            APBill.recurring_template_id == template.id,
+            APBill.due_date == due_date_raw,
+        ).first()
+        if existing:
+            continue
+        invoice_number = f"RC-{template.id}-{today.strftime('%Y%m')}"
+        bill = APBill(
+            supplier_id=template.supplier_id,
+            invoice_number=invoice_number,
+            invoice_date=str(today),
+            due_date=due_date_raw,
+            expense_category=template.expense_category,
+            description=f"Auto-generated recurring payable: {template.template_name}",
+            invoice_total=_money(template.amount),
+            tax_amount=_money(template.tax_amount),
+            submitted_by="system",
+            submitted_date=str(today),
+            status="unpaid",
+            is_recurring=True,
+            recurring_template_id=template.id,
+            created_by="system",
+            updated_by="system",
+        )
+        db.session.add(bill)
+        db.session.flush()
+        db.session.add(
+            APBillLine(
+                bill_id=bill.id,
+                line_description=template.template_name,
+                amount=_money(template.amount),
+                expense_category=template.expense_category,
+            )
+        )
+        template.last_generated_on = str(today)
+        _ap_log("auto_generate", "bill", bill.id, {"template": template.template_name, "due_date": due_date_raw})
 
 
 def _parse_date(raw: str | None, fallback: date | None = None) -> date | None:
@@ -244,6 +410,298 @@ def _save_attachment(file_storage):
 @roles_required("reception", "nurse", "accountant", "branch_manager", "admin")
 def finance_home():
     return redirect(url_for("finance.petty_cash_ledger"))
+
+
+@bp.route("/finance/accounts-payable", methods=["GET", "POST"])
+@login_required
+@roles_required("accountant", "admin")
+def accounts_payable():
+    today = eat_today()
+    _ap_generate_recurring_bills(today)
+
+    if request.method == "POST":
+        action = (request.form.get("action") or "").strip()
+        if action == "create_supplier":
+            supplier = APSupplier(
+                supplier_name=(request.form.get("supplier_name") or "").strip(),
+                contact_person=(request.form.get("contact_person") or "").strip(),
+                phone_number=(request.form.get("phone_number") or "").strip(),
+                email=(request.form.get("email") or "").strip(),
+                physical_address=(request.form.get("physical_address") or "").strip(),
+                category=(request.form.get("category") or "").strip(),
+                payment_terms=(request.form.get("payment_terms") or "30 days").strip(),
+                payment_details=(request.form.get("payment_details") or "").strip(),
+                tax_details=(request.form.get("tax_details") or "").strip(),
+                is_active=(request.form.get("is_active") == "on"),
+                opening_balance=_money(request.form.get("opening_balance") or 0),
+            )
+            if not supplier.supplier_name:
+                flash("Supplier name is required.", "warning")
+                return redirect(url_for("finance.accounts_payable"))
+            db.session.add(supplier)
+            db.session.flush()
+            _ap_log("create", "supplier", supplier.id, {"supplier_name": supplier.supplier_name})
+            db.session.commit()
+            flash("Supplier saved.", "success")
+            return redirect(url_for("finance.accounts_payable"))
+
+        if action == "create_bill":
+            supplier = APSupplier.query.get(int(request.form.get("supplier_id") or 0))
+            if not supplier:
+                flash("Select a valid supplier.", "warning")
+                return redirect(url_for("finance.accounts_payable"))
+            invoice_number = (request.form.get("invoice_number") or "").strip()
+            existing = APBill.query.filter_by(supplier_id=supplier.id, invoice_number=invoice_number).first()
+            if existing:
+                flash("Duplicate invoice number warning for this supplier.", "danger")
+                return redirect(url_for("finance.accounts_payable"))
+
+            bill = APBill(
+                supplier_id=supplier.id,
+                invoice_number=invoice_number,
+                invoice_date=str(_parse_date(request.form.get("invoice_date"), today)),
+                due_date=str(_parse_date(request.form.get("due_date"), today)),
+                expense_category=(request.form.get("expense_category") or "").strip(),
+                description=(request.form.get("description") or "").strip(),
+                invoice_total=_money(request.form.get("invoice_total") or 0),
+                tax_amount=_money(request.form.get("tax_amount") or 0),
+                submitted_by=(request.form.get("submitted_by") or getattr(current_user, "username", "")).strip(),
+                submitted_date=str(_parse_date(request.form.get("submitted_date"), today)),
+                status="unpaid",
+                is_recurring=(request.form.get("is_recurring") == "on"),
+                created_by=getattr(current_user, "username", ""),
+                updated_by=getattr(current_user, "username", ""),
+            )
+            if APBill.query.filter_by(invoice_date=bill.invoice_date, invoice_total=bill.invoice_total).first():
+                flash("Duplicate warning: another invoice has same amount and date.", "warning")
+
+            db.session.add(bill)
+            db.session.flush()
+            line_descriptions = request.form.getlist("line_description[]")
+            line_amounts = request.form.getlist("line_amount[]")
+            line_categories = request.form.getlist("line_category[]")
+            for idx, line_desc in enumerate(line_descriptions):
+                line_desc = (line_desc or "").strip()
+                if not line_desc:
+                    continue
+                db.session.add(
+                    APBillLine(
+                        bill_id=bill.id,
+                        line_description=line_desc,
+                        amount=_money(line_amounts[idx] if idx < len(line_amounts) else 0),
+                        expense_category=((line_categories[idx] if idx < len(line_categories) else bill.expense_category) or bill.expense_category).strip(),
+                    )
+                )
+
+            doc_type = (request.form.get("document_type") or "supplier invoice").strip()
+            for uploaded in request.files.getlist("attachments"):
+                if not uploaded or not uploaded.filename:
+                    continue
+                path = _ap_save_attachment(uploaded)
+                db.session.add(APAttachment(bill_id=bill.id, document_type=doc_type, file_path=path, uploaded_by=getattr(current_user, "username", "")))
+
+            _ap_log("create", "bill", bill.id, {"supplier": supplier.supplier_name, "invoice_number": invoice_number})
+            db.session.commit()
+            flash("Bill captured successfully.", "success")
+            return redirect(url_for("finance.accounts_payable"))
+
+        if action == "record_payment":
+            bill = APBill.query.get_or_404(int(request.form.get("bill_id") or 0))
+            amount = _money(request.form.get("amount") or 0)
+            if amount > _ap_bill_balance(bill):
+                flash("Supplier overpayment warning: amount exceeds bill balance.", "danger")
+                return redirect(url_for("finance.accounts_payable"))
+            proof = request.files.get("payment_proof")
+            proof_path = _ap_save_attachment(proof) if proof and proof.filename else None
+            payment = APPayment(
+                bill_id=bill.id,
+                payment_date=str(_parse_date(request.form.get("payment_date"), today)),
+                amount=amount,
+                method=(request.form.get("method") or "cash").strip().lower(),
+                reference_number=(request.form.get("reference_number") or "").strip(),
+                paying_account=(request.form.get("paying_account") or "").strip(),
+                processed_by=(request.form.get("processed_by") or getattr(current_user, "username", "")).strip(),
+                proof_attachment_path=proof_path,
+            )
+            db.session.add(payment)
+            _ap_refresh_status(bill)
+            _ap_log("payment", "bill", bill.id, {"amount": str(amount), "method": payment.method})
+            db.session.commit()
+            flash("Payment recorded.", "success")
+            return redirect(url_for("finance.accounts_payable"))
+
+        if action == "create_recurring":
+            template = APRecurringTemplate(
+                supplier_id=int(request.form.get("supplier_id") or 0),
+                template_name=(request.form.get("template_name") or "").strip(),
+                expense_category=(request.form.get("expense_category") or "").strip(),
+                amount=_money(request.form.get("amount") or 0),
+                tax_amount=_money(request.form.get("tax_amount") or 0),
+                frequency="monthly",
+                due_day=int(request.form.get("due_day") or 1),
+                reminder_days_before=int(request.form.get("reminder_days_before") or 3),
+                is_active=(request.form.get("is_active") == "on"),
+                created_by=getattr(current_user, "username", ""),
+            )
+            db.session.add(template)
+            db.session.flush()
+            _ap_log("create", "recurring_template", template.id, {"template_name": template.template_name})
+            db.session.commit()
+            flash("Recurring template saved.", "success")
+            return redirect(url_for("finance.accounts_payable"))
+
+    suppliers = APSupplier.query.order_by(APSupplier.supplier_name.asc()).all()
+    bills = APBill.query.order_by(APBill.due_date.asc(), APBill.id.desc()).all()
+    templates = APRecurringTemplate.query.order_by(APRecurringTemplate.template_name.asc()).all()
+    audits = APAuditLog.query.order_by(APAuditLog.created_at.desc()).limit(20).all()
+
+    aging = {"current": Decimal("0.00"), "1-30": Decimal("0.00"), "31-60": Decimal("0.00"), "61-90": Decimal("0.00"), "90+": Decimal("0.00")}
+    supplier_totals = defaultdict(Decimal)
+    category_totals = defaultdict(Decimal)
+    due_this_week, overdue, partials = [], [], []
+    duplicate_refs = []
+    paid_refs = {(b.supplier_id, b.invoice_number) for b in bills if b.status == "paid"}
+    monthly_payments = Decimal("0.00")
+    for bill in bills:
+        _ap_refresh_status(bill)
+        balance = _ap_bill_balance(bill)
+        bucket = _ap_bill_bucket(bill, today)
+        if bucket in aging:
+            aging[bucket] += balance
+        if balance > 0:
+            supplier_totals[bill.supplier.supplier_name] += balance
+            category_totals[bill.expense_category] += balance
+        due = _parse_date(bill.due_date, today)
+        if due and 0 <= (due - today).days <= 7 and balance > 0:
+            due_this_week.append(bill)
+        if due and due < today and balance > 0:
+            overdue.append(bill)
+        if bill.status == "partial":
+            partials.append(bill)
+        if (bill.supplier_id, bill.invoice_number) in paid_refs and bill.status != "paid":
+            duplicate_refs.append(bill)
+        for payment in bill.payments:
+            payment_dt = _parse_date(payment.payment_date, today)
+            if payment_dt and payment_dt.year == today.year and payment_dt.month == today.month:
+                monthly_payments += _money(payment.amount)
+
+    reminders = []
+    for template in templates:
+        if not template.is_active:
+            continue
+        due_day = min(max(1, template.due_day or 1), 28)
+        due_dt = date(today.year, today.month, due_day)
+        reminder_date = due_dt - timedelta(days=max(0, template.reminder_days_before or 0))
+        if reminder_date <= today <= due_dt:
+            reminders.append(f"{template.template_name} due on {due_dt}")
+
+    report = (request.args.get("report") or "").strip().lower()
+    if report:
+        out = io.StringIO()
+        writer = csv.writer(out)
+        if report == "aging":
+            writer.writerow(["Bucket", "Amount"])
+            for bucket, amount in aging.items():
+                writer.writerow([bucket, f"{amount:.2f}"])
+            name = "payables_aging_report.csv"
+        elif report == "unpaid":
+            writer.writerow(["Supplier", "Invoice Number", "Due Date", "Outstanding"])
+            for bill in bills:
+                bal = _ap_bill_balance(bill)
+                if bal > 0:
+                    writer.writerow([bill.supplier.supplier_name, bill.invoice_number, bill.due_date, f"{bal:.2f}"])
+            name = "unpaid_bills_report.csv"
+        elif report == "payment_history":
+            writer.writerow(["Supplier", "Invoice Number", "Payment Date", "Amount", "Method", "Reference", "Processed By"])
+            for bill in bills:
+                for pay in bill.payments:
+                    writer.writerow([bill.supplier.supplier_name, bill.invoice_number, pay.payment_date, f"{_money(pay.amount):.2f}", pay.method, pay.reference_number, pay.processed_by])
+            name = "payment_history_report.csv"
+        else:
+            writer.writerow(["Supplier", "Category", "Invoice", "Total", "Paid", "Outstanding", "Status"])
+            for bill in bills:
+                writer.writerow([bill.supplier.supplier_name, bill.expense_category, bill.invoice_number, f"{_money(bill.invoice_total):.2f}", f"{_ap_bill_paid_total(bill):.2f}", f"{_ap_bill_balance(bill):.2f}", bill.status])
+            name = "accounts_payable_summary.csv"
+        return Response(out.getvalue(), mimetype="text/csv", headers={"Content-Disposition": f"attachment; filename={name}"})
+
+    db.session.commit()
+    return render_template(
+        "finance_accounts_payable.html",
+        suppliers=suppliers,
+        bills=bills,
+        templates=templates,
+        audits=audits,
+        today=today,
+        supplier_categories=AP_SUPPLIER_CATEGORIES,
+        payment_terms=AP_PAYMENT_TERMS,
+        attachment_types=AP_ATTACHMENT_TYPES,
+        payment_methods=AP_PAYMENT_METHODS,
+        expense_categories=AP_EXPENSE_CATEGORIES,
+        ap_bill_balance=_ap_bill_balance,
+        ap_bill_paid_total=_ap_bill_paid_total,
+        ap_bill_bucket=_ap_bill_bucket,
+        aging=aging,
+        supplier_totals=sorted(supplier_totals.items(), key=lambda x: x[0].lower()),
+        category_totals=sorted(category_totals.items(), key=lambda x: x[0].lower()),
+        due_this_week=due_this_week,
+        overdue=overdue,
+        partials=partials,
+        reminders=reminders,
+        duplicate_refs=duplicate_refs,
+        monthly_payments=monthly_payments,
+        total_outstanding=sum(aging.values(), Decimal("0.00")),
+        is_admin=_user_role() == "admin",
+    )
+
+
+@bp.route("/finance/accounts-payable/bills/<int:bill_id>/edit", methods=["POST"])
+@login_required
+@roles_required("admin")
+def ap_bill_edit(bill_id: int):
+    bill = APBill.query.get_or_404(bill_id)
+    before = {"due_date": bill.due_date, "description": bill.description, "invoice_total": str(bill.invoice_total)}
+    bill.due_date = str(_parse_date(request.form.get("due_date"), eat_today()))
+    bill.description = (request.form.get("description") or bill.description or "").strip()
+    bill.invoice_total = _money(request.form.get("invoice_total") or bill.invoice_total)
+    bill.tax_amount = _money(request.form.get("tax_amount") or bill.tax_amount)
+    bill.expense_category = (request.form.get("expense_category") or bill.expense_category).strip()
+    bill.updated_by = getattr(current_user, "username", "")
+    _ap_refresh_status(bill)
+    _ap_log("edit", "bill", bill.id, {"before": before, "after": {"due_date": bill.due_date, "invoice_total": str(bill.invoice_total)}})
+    db.session.commit()
+    flash("Bill updated.", "success")
+    return redirect(url_for("finance.accounts_payable"))
+
+
+@bp.route("/finance/accounts-payable/bills/<int:bill_id>/delete", methods=["POST"])
+@login_required
+@roles_required("admin")
+def ap_bill_delete(bill_id: int):
+    bill = APBill.query.get_or_404(bill_id)
+    _ap_log("delete", "bill", bill.id, {"invoice_number": bill.invoice_number})
+    db.session.delete(bill)
+    db.session.commit()
+    flash("Bill deleted.", "success")
+    return redirect(url_for("finance.accounts_payable"))
+
+
+@bp.route("/finance/accounts-payable/attachment/<int:attachment_id>")
+@login_required
+@roles_required("accountant", "admin")
+def ap_attachment(attachment_id: int):
+    attachment = APAttachment.query.get_or_404(attachment_id)
+    return send_file(os.path.join(current_app.config["UPLOAD_FOLDER"], attachment.file_path), as_attachment=False)
+
+
+@bp.route("/finance/accounts-payable/payment-proof/<int:payment_id>")
+@login_required
+@roles_required("accountant", "admin")
+def ap_payment_proof(payment_id: int):
+    payment = APPayment.query.get_or_404(payment_id)
+    if not payment.proof_attachment_path:
+        flash("No payment proof for this record.", "warning")
+        return redirect(url_for("finance.accounts_payable"))
+    return send_file(os.path.join(current_app.config["UPLOAD_FOLDER"], payment.proof_attachment_path), as_attachment=False)
 
 
 @bp.route("/finance/petty-cash", methods=["GET", "POST"])
@@ -510,12 +968,24 @@ def petty_cash_attachment(transaction_id: int):
 @bp.before_app_request
 def ensure_petty_cash_tables():
     app = current_app
-    if getattr(app, "_petty_cash_tables_checked", False):
+    if getattr(app, "_finance_tables_checked", False):
         return
     try:
         inspector = inspect(db.engine)
         existing = set(inspector.get_table_names())
-        needed = {"petty_cash_transaction", "petty_cash_reconciliation", "petty_cash_audit_log", "petty_cash_period_lock"}
+        needed = {
+            "petty_cash_transaction",
+            "petty_cash_reconciliation",
+            "petty_cash_audit_log",
+            "petty_cash_period_lock",
+            "ap_supplier",
+            "ap_bill",
+            "ap_bill_line",
+            "ap_attachment",
+            "ap_payment",
+            "ap_recurring_template",
+            "ap_audit_log",
+        }
         if not needed.issubset(existing):
             db.create_all()
         columns = {c.get("name") for c in inspector.get_columns("petty_cash_transaction")} if "petty_cash_transaction" in existing else set()
@@ -526,4 +996,4 @@ def ensure_petty_cash_tables():
         db.session.rollback()
         app.logger.warning(f"Petty cash table check skipped: {exc}")
     finally:
-        app._petty_cash_tables_checked = True  # type: ignore[attr-defined]
+        app._finance_tables_checked = True  # type: ignore[attr-defined]
