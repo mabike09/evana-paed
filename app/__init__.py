@@ -57,6 +57,11 @@ def create_app():
     os.makedirs(upload_dir, exist_ok=True)
     app.config.setdefault("MAX_CONTENT_LENGTH", 20 * 1024 * 1024)
 
+    app.config.setdefault("SPEEDA_BASE_URL", os.getenv("SPEEDA_BASE_URL", "http://apidocs.speedamobile.com/api/SendSMS"))
+    app.config.setdefault("SPEEDA_API_ID", os.getenv("SPEEDA_API_ID", "API29324194311"))
+    app.config.setdefault("SPEEDA_API_PASSWORD", os.getenv("SPEEDA_API_PASSWORD", "Playtime@13pm"))
+    app.config.setdefault("SPEEDA_SENDER_ID", os.getenv("SPEEDA_SENDER_ID", "BULKSMS"))
+
     # -------------------------
     # Sessions / CSRF
     # -------------------------
@@ -100,7 +105,7 @@ def create_app():
     # -------------------------
     # Blueprints
     # -------------------------
-    from .routes import auth, home, patients, queue, billing, lab, files, inventory, reports, prices, pharmacy, finance
+    from .routes import auth, home, patients, queue, billing, lab, files, inventory, reports, prices, pharmacy, finance, sms
     app.register_blueprint(home.bp)
     app.register_blueprint(auth.bp)
     app.register_blueprint(patients.bp)
@@ -113,6 +118,7 @@ def create_app():
     app.register_blueprint(prices.bp)
     app.register_blueprint(pharmacy.bp)
     app.register_blueprint(finance.bp)
+    app.register_blueprint(sms.bp)
 
     # -------------------------
     # Invoice editability helper
@@ -170,6 +176,26 @@ def create_app():
         except Exception as e:
             app.logger.warning(f"Insurer seed skipped: {e}")
         app._insurers_seeded = True  # type: ignore[attr-defined]
+
+    @app.before_request
+    def _ensure_sms_tables_once():
+        """Create SMS tables defensively if migrations have not yet been applied."""
+        if getattr(app, "_sms_tables_checked", False):
+            return
+
+        try:
+            insp = inspect(db.engine)
+            if not insp.has_table("sms_template") or not insp.has_table("sms_dispatch_log"):
+                from .models import SmsDispatchLog, SmsTemplate
+
+                SmsTemplate.__table__.create(bind=db.engine, checkfirst=True)
+                SmsDispatchLog.__table__.create(bind=db.engine, checkfirst=True)
+                app.logger.warning("Created missing SMS tables at runtime (sms_template/sms_dispatch_log).")
+        except Exception as e:
+            app.logger.warning(f"SMS table check skipped: {e}")
+        finally:
+            app._sms_tables_checked = True  # type: ignore[attr-defined]
+
 
     # -------------------------
     # Backfill legacy SQLite schema drift once per process
