@@ -57,6 +57,11 @@ def create_app():
     os.makedirs(upload_dir, exist_ok=True)
     app.config.setdefault("MAX_CONTENT_LENGTH", 20 * 1024 * 1024)
 
+    app.config.setdefault("SPEEDA_BASE_URL", os.getenv("SPEEDA_BASE_URL", "http://apidocs.speedamobile.com/api/SendSMS"))
+    app.config.setdefault("SPEEDA_API_ID", os.getenv("SPEEDA_API_ID", "API29324194311"))
+    app.config.setdefault("SPEEDA_API_PASSWORD", os.getenv("SPEEDA_API_PASSWORD", "Playtime@13pm"))
+    app.config.setdefault("SPEEDA_SENDER_ID", os.getenv("SPEEDA_SENDER_ID", "BULKSMS"))
+
     # -------------------------
     # Sessions / CSRF
     # -------------------------
@@ -100,7 +105,7 @@ def create_app():
     # -------------------------
     # Blueprints
     # -------------------------
-    from .routes import auth, home, patients, queue, billing, lab, files, inventory, reports, prices, pharmacy, finance
+    from .routes import auth, home, patients, queue, billing, lab, files, inventory, reports, prices, pharmacy, finance, sms
     app.register_blueprint(home.bp)
     app.register_blueprint(auth.bp)
     app.register_blueprint(patients.bp)
@@ -113,6 +118,7 @@ def create_app():
     app.register_blueprint(prices.bp)
     app.register_blueprint(pharmacy.bp)
     app.register_blueprint(finance.bp)
+    app.register_blueprint(sms.bp)
 
     # -------------------------
     # Invoice editability helper
