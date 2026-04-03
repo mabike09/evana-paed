@@ -602,6 +602,35 @@ class APAuditLog(db.Model):
     created_at = db.Column(db.DateTime, default=eat_now, nullable=False, index=True)
 
 
+class SmsTemplate(db.Model):
+    __tablename__ = "sms_template"
+
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(120), nullable=False, index=True)
+    category = db.Column(db.String(30), nullable=False, index=True)
+    body = db.Column(db.Text, nullable=False)
+    is_active = db.Column(db.Boolean, nullable=False, default=True, index=True)
+    created_by = db.Column(db.String(150), nullable=False)
+    created_at = db.Column(db.DateTime, default=eat_now, nullable=False, index=True)
+    updated_at = db.Column(db.DateTime, default=eat_now, onupdate=eat_now, nullable=False)
+
+
+class SmsDispatchLog(db.Model):
+    __tablename__ = "sms_dispatch_log"
+
+    id = db.Column(db.Integer, primary_key=True)
+    template_id = db.Column(db.Integer, db.ForeignKey("sms_template.id"), index=True)
+    campaign_type = db.Column(db.String(30), nullable=False, index=True)
+    recipient_phone = db.Column(db.String(40), nullable=False, index=True)
+    message_body = db.Column(db.Text, nullable=False)
+    provider_response = db.Column(db.Text)
+    status = db.Column(db.String(20), nullable=False, index=True)
+    created_by = db.Column(db.String(150), nullable=False)
+    created_at = db.Column(db.DateTime, default=eat_now, nullable=False, index=True)
+
+    template = db.relationship("SmsTemplate", backref=db.backref("dispatch_logs", lazy=True))
+
+
 # ===========================
 # NEW: Price Books
 # ===========================
