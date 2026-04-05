@@ -13,6 +13,7 @@
       <div class="card-header">Create SMS Template</div>
       <div class="card-body">
         <form method="post">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <input type="hidden" name="action" value="create_template">
           <div class="mb-3">
             <label class="form-label">Template Name</label>
@@ -57,6 +58,7 @@
       <div class="card-header">Send Seasonal / Promotional SMS</div>
       <div class="card-body">
         <form method="post">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <input type="hidden" name="action" value="send_sms">
           <div class="row g-3">
             <div class="col-md-6">
@@ -77,8 +79,12 @@
             </div>
             <div class="col-12">
               <label class="form-label">Recipients</label>
-              <textarea name="recipients" class="form-control" rows="3" placeholder="Enter phone numbers separated by commas or new lines" required></textarea>
-              <div class="form-text">Example: 256700000001, 256700000002</div>
+              <select name="recipient_mode" class="form-select mb-2">
+                <option value="manual">Manual numbers</option>
+                <option value="all_contacts">All patient contacts</option>
+              </select>
+              <textarea name="recipients" class="form-control" rows="3" placeholder="Enter phone numbers separated by commas or new lines"></textarea>
+              <div class="form-text">Manual mode example: 256700000001, 256700000002. If you choose "All patient contacts", manual numbers are ignored.</div>
             </div>
             <div class="col-12">
               <label class="form-label">Custom Message (Optional)</label>

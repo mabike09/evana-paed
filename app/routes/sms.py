@@ -5,7 +5,7 @@ from flask import Blueprint, current_app, flash, redirect, render_template, requ
 from flask_login import current_user, login_required
 
 from ..extensions import db
-from ..models import SmsDispatchLog, SmsTemplate
+from ..models import Patient, SmsDispatchLog, SmsTemplate
 from ..permissions import roles_required
 
 bp = Blueprint("sms", __name__)
@@ -45,6 +45,22 @@ def _send_sms(phone_number: str, message: str):
     return get_resp.ok, get_resp.text
 
 
+def _parse_manual_recipients(raw_value: str):
+    recipients = [p.strip() for p in raw_value.replace("\n", ",").split(",") if p.strip()]
+    return list(dict.fromkeys(recipients))
+
+
+def _all_contact_phones():
+    rows = (
+        db.session.query(Patient.phone)
+        .filter(Patient.phone.isnot(None))
+        .filter(Patient.phone != "")
+        .all()
+    )
+    recipients = [row[0].strip() for row in rows if row and row[0] and row[0].strip()]
+    return list(dict.fromkeys(recipients))
+
+
 @bp.route("/admin/sms", methods=["GET", "POST"])
 @login_required
 @roles_required("admin")
@@ -81,6 +97,7 @@ def sms_manager():
         campaign_type = (request.form.get("campaign_type") or "").strip().lower()
         recipients_raw = (request.form.get("recipients") or "").strip()
         custom_message = (request.form.get("custom_message") or "").strip()
+        recipient_mode = (request.form.get("recipient_mode") or "manual").strip().lower()
 
         template = SmsTemplate.query.get(int(template_id)) if template_id.isdigit() else None
         message = custom_message or (template.body if template else "")
@@ -93,13 +110,16 @@ def sms_manager():
             flash("Please provide a message or choose a template.", "danger")
             return redirect(url_for("sms.sms_manager"))
 
-        recipients = [
-            p.strip()
-            for p in recipients_raw.replace("\n", ",").split(",")
-            if p.strip()
-        ]
+        if recipient_mode == "all_contacts":
+            recipients = _all_contact_phones()
+        else:
+            recipients = _parse_manual_recipients(recipients_raw)
+
         if not recipients:
-            flash("Please provide at least one phone number.", "danger")
+            if recipient_mode == "all_contacts":
+                flash("No patient contacts found to send SMS to.", "danger")
+            else:
+                flash("Please provide at least one phone number.", "danger")
             return redirect(url_for("sms.sms_manager"))
 
         sent_count = 0
