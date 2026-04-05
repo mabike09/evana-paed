@@ -1,0 +1,134 @@
+{% extends "base.html" %}
+{% block title %}SMS Manager · Evana – Paed{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h2 class="mb-0">SMS Manager</h2>
+  <span class="text-muted small">Use templates for seasonal greetings and promotional campaigns.</span>
+</div>
+
+<div class="row g-4">
+  <div class="col-lg-5">
+    <div class="card shadow-sm">
+      <div class="card-header">Create SMS Template</div>
+      <div class="card-body">
+        <form method="post">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="action" value="create_template">
+          <div class="mb-3">
+            <label class="form-label">Template Name</label>
+            <input name="name" class="form-control" maxlength="120" placeholder="e.g. Easter Greeting" required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Category</label>
+            <select name="category" class="form-select" required>
+              <option value="seasonal">Seasonal Greeting</option>
+              <option value="promotional">Promotional</option>
+            </select>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Message Body</label>
+            <textarea name="body" class="form-control" rows="5" maxlength="500" required placeholder="Type the SMS template text..."></textarea>
+          </div>
+          <button type="submit" class="btn btn-primary">Save Template</button>
+        </form>
+      </div>
+    </div>
+
+    <div class="card shadow-sm mt-4">
+      <div class="card-header">Saved Templates</div>
+      <ul class="list-group list-group-flush">
+        {% for t in templates %}
+          <li class="list-group-item">
+            <div class="d-flex justify-content-between">
+              <strong>{{ t.name }}</strong>
+              <span class="badge bg-secondary text-uppercase">{{ t.category }}</span>
+            </div>
+            <div class="small text-muted">{{ t.body }}</div>
+          </li>
+        {% else %}
+          <li class="list-group-item text-muted">No templates yet.</li>
+        {% endfor %}
+      </ul>
+    </div>
+  </div>
+
+  <div class="col-lg-7">
+    <div class="card shadow-sm">
+      <div class="card-header">Send Seasonal / Promotional SMS</div>
+      <div class="card-body">
+        <form method="post">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="action" value="send_sms">
+          <div class="row g-3">
+            <div class="col-md-6">
+              <label class="form-label">Campaign Type</label>
+              <select name="campaign_type" class="form-select" required>
+                <option value="seasonal">Seasonal Greeting</option>
+                <option value="promotional">Promotional</option>
+              </select>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Template (Optional)</label>
+              <select name="template_id" class="form-select">
+                <option value="">-- choose template --</option>
+                {% for t in templates %}
+                  <option value="{{ t.id }}">{{ t.name }} ({{ t.category }})</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-12">
+              <label class="form-label">Recipients</label>
+              <select name="recipient_mode" class="form-select mb-2">
+                <option value="manual">Manual numbers</option>
+                <option value="all_contacts">All patient contacts</option>
+              </select>
+              <textarea name="recipients" class="form-control" rows="3" placeholder="Enter phone numbers separated by commas or new lines"></textarea>
+              <div class="form-text">Manual mode example: 256700000001, 256700000002. If you choose "All patient contacts", manual numbers are ignored.</div>
+            </div>
+            <div class="col-12">
+              <label class="form-label">Custom Message (Optional)</label>
+              <textarea name="custom_message" class="form-control" rows="5" maxlength="500" placeholder="Leave empty to use selected template message."></textarea>
+            </div>
+          </div>
+          <button type="submit" class="btn btn-success mt-3">Send SMS</button>
+        </form>
+      </div>
+    </div>
+
+    <div class="card shadow-sm mt-4">
+      <div class="card-header">Recent SMS Dispatches</div>
+      <div class="table-responsive">
+        <table class="table table-sm mb-0">
+          <thead>
+            <tr>
+              <th>When</th>
+              <th>Type</th>
+              <th>Recipient</th>
+              <th>Status</th>
+              <th>Template</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for log in logs %}
+              <tr>
+                <td>{{ log.created_at.strftime('%Y-%m-%d %H:%M') if log.created_at else '-' }}</td>
+                <td>{{ log.campaign_type }}</td>
+                <td>{{ log.recipient_phone }}</td>
+                <td>
+                  <span class="badge {{ 'bg-success' if log.status == 'sent' else 'bg-danger' }}">{{ log.status }}</span>
+                </td>
+                <td>{{ log.template.name if log.template else '-' }}</td>
+              </tr>
+            {% else %}
+              <tr>
+                <td colspan="5" class="text-muted">No dispatch logs yet.</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
