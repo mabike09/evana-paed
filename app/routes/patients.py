@@ -967,7 +967,7 @@ def _lab_results_for_visit(visit_id: int):
 # ---------- Clinical: Save clinician sections ----------
 @bp.route("/patients", methods=["GET"])
 @login_required
-@roles_required("reception", "nurse", "doctor", "pediatrician", "admin")
+@roles_required("reception", "nurse", "doctor", "pediatrician", "accountant", "admin")
 def patients_list():
     q = (request.args.get("q") or "").strip()
     query = Patient.query
