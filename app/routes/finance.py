@@ -106,9 +106,20 @@ def _can_manage_finance() -> bool:
     return _user_role() in FINANCE_MANAGER_ROLES or _user_role() == "admin"
 
 
+def _can_manage_petty_cash() -> bool:
+    return _user_role() == "admin"
+
+
+def _can_record_petty_cash_in() -> bool:
+    return _user_role() in {"accountant", "admin"}
+
+
+def _can_record_petty_cash_out() -> bool:
+    return _user_role() in {"reception", "receptionist", "nurse", "branch_manager", "branch manager", "admin"}
+
+
 def _can_enter_transactions() -> bool:
-    role = _user_role()
-    return role in ENTRY_ROLES or role in FINANCE_MANAGER_ROLES or role == "admin"
+    return _can_record_petty_cash_in() or _can_record_petty_cash_out()
 
 
 def _allowed_attachment(filename: str) -> bool:
@@ -749,8 +760,11 @@ def petty_cash_ledger():
         if transaction_type not in PETTY_CASH_TXN_TYPES:
             flash("Transaction type must be cash in or cash out.", "warning")
             return redirect(url_for("finance.petty_cash_ledger"))
-        if transaction_type == "cash_in" and not _can_manage_finance():
+        if transaction_type == "cash_in" and not _can_record_petty_cash_in():
             flash("Only accountant/admin can record cash in transactions.", "danger")
+            return redirect(url_for("finance.petty_cash_ledger"))
+        if transaction_type == "cash_out" and not _can_record_petty_cash_out():
+            flash("Accountants can only record cash in petty cash transactions.", "danger")
             return redirect(url_for("finance.petty_cash_ledger"))
         if amount <= 0:
             flash("Amount must be greater than zero.", "warning")
@@ -765,8 +779,8 @@ def petty_cash_ledger():
             flash(str(exc), "warning")
             return redirect(url_for("finance.petty_cash_ledger"))
 
-        if action_mode in {"top_up", "initial_float", "cash_returned"} and not _can_manage_finance():
-            flash("Only accountant/admin can set float, top up cash, or record cash returned.", "danger")
+        if action_mode in {"top_up", "initial_float", "cash_returned"} and not _can_manage_petty_cash():
+            flash("Only admin can set float, top up cash, or record cash returned.", "danger")
             return redirect(url_for("finance.petty_cash_ledger"))
 
         voucher_number = (request.form.get("voucher_number") or "").strip()
@@ -892,6 +906,9 @@ def petty_cash_ledger():
         categories=PETTY_CASH_CATEGORIES,
         transaction_types=PETTY_CASH_TXN_TYPES,
         can_manage_finance=_can_manage_finance(),
+        can_manage_petty_cash=_can_manage_petty_cash(),
+        can_record_petty_cash_in=_can_record_petty_cash_in(),
+        can_record_petty_cash_out=_can_record_petty_cash_out(),
         locks=locks,
         audits=audits,
         low_balance_threshold=LOW_BALANCE_THRESHOLD,
@@ -900,7 +917,7 @@ def petty_cash_ledger():
 
 @bp.route("/finance/petty-cash/reconciliation", methods=["GET", "POST"])
 @login_required
-@roles_required("accountant", "admin")
+@roles_required("admin")
 def petty_cash_reconciliation():
     if request.method == "POST":
         reconciliation_date = _parse_date(request.form.get("reconciliation_date"), eat_today())

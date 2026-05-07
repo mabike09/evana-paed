@@ -2,59 +2,62 @@
 {% block title %}Patients{% endblock %}
 {% block content %}
 
-<h2 class="h5 d-flex align-items-center">
-  <span>Billing Queue</span>
+{% set can_manage = current_user.role in ['reception','nurse','admin'] %}
+{% set can_view_billing_history = current_user.role in ['reception','nurse','accountant','admin'] %}
+{% set can_send_to_pharmacy = current_user.role in ['reception','nurse','admin'] %}
+{% set can_send_to_lab = current_user.role in ['reception','nurse','admin'] %}
+
+{% if can_manage %}
+  <h2 class="h5 d-flex align-items-center">
+    <span>Billing Queue</span>
+    {% if billing_queue and billing_queue|length %}
+      <span class="badge bg-secondary ms-2">{{ billing_queue|length }}</span>
+    {% endif %}
+  </h2>
+
   {% if billing_queue and billing_queue|length %}
-    <span class="badge bg-secondary ms-2">{{ billing_queue|length }}</span>
+    <div class="list-group mb-4">
+      {% for bq in billing_queue %}
+        <div class="list-group-item d-flex justify-content-between align-items-center">
+          <div class="me-3">
+            <strong>#{{ bq.id }}</strong>
+            &nbsp;&middot;&nbsp;
+            {% if bq.patient %}
+              {{ bq.patient.first_name }} {{ bq.patient.last_name }} (ID {{ bq.patient_id }})
+            {% else %}
+              Patient ID {{ bq.patient_id }}
+            {% endif %}
+            {% if bq.visit_id %}&nbsp;&middot;&nbsp; Visit #{{ bq.visit_id }}{% endif %}
+            {% if bq.added_at %}&nbsp;&middot;&nbsp; {{ bq.added_at }}{% endif %}
+            {% if bq.description %}
+              <div class="small text-muted mt-1">{{ bq.description }}</div>
+            {% endif %}
+          </div>
+
+          <div class="d-flex gap-2">
+            <a class="btn btn-sm btn-outline-primary"
+               href="{{ url_for('billing.patient_billing', patient_id=bq.patient_id) }}">
+              Go to billing
+            </a>
+
+            <form method="post" action="{{ url_for('billing.billing_queue_close', bq_id=bq.id) }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button class="btn btn-sm btn-outline-danger">Close visit</button>
+            </form>
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  {% else %}
+    <div class="alert alert-light border mb-4">No patients waiting for billing.</div>
   {% endif %}
-</h2>
-
-{% if billing_queue and billing_queue|length %}
-  <div class="list-group mb-4">
-    {% for bq in billing_queue %}
-      <div class="list-group-item d-flex justify-content-between align-items-center">
-        <div class="me-3">
-          <strong>#{{ bq.id }}</strong>
-          &nbsp;&middot;&nbsp;
-          {% if bq.patient %}
-            {{ bq.patient.first_name }} {{ bq.patient.last_name }} (ID {{ bq.patient_id }})
-          {% else %}
-            Patient ID {{ bq.patient_id }}
-          {% endif %}
-          {% if bq.visit_id %}&nbsp;&middot;&nbsp; Visit #{{ bq.visit_id }}{% endif %}
-          {% if bq.added_at %}&nbsp;&middot;&nbsp; {{ bq.added_at }}{% endif %}
-          {% if bq.description %}
-            <div class="small text-muted mt-1">{{ bq.description }}</div>
-          {% endif %}
-        </div>
-
-        <div class="d-flex gap-2">
-          <a class="btn btn-sm btn-outline-primary"
-             href="{{ url_for('billing.patient_billing', patient_id=bq.patient_id) }}">
-            Go to billing
-          </a>
-
-          <form method="post" action="{{ url_for('billing.billing_queue_close', bq_id=bq.id) }}">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <button class="btn btn-sm btn-outline-danger">Close visit</button>
-          </form>
-        </div>
-      </div>
-    {% endfor %}
-  </div>
-{% else %}
-  <div class="alert alert-light border mb-4">No patients waiting for billing.</div>
 {% endif %}
 
 <div class="d-flex align-items-center mb-3">
   <h1 class="h4 mb-0 me-3">Patients</h1>
 
-  <a class="btn btn-sm btn-success me-2" href="{{ url_for('patients.patients_new') }}">Register new</a>
-
-  {% set can_manage = current_user.role in ['reception','nurse','admin'] %}
-  {% set can_send_to_pharmacy = current_user.role in ['reception','nurse','admin'] %}
-  {% set can_send_to_lab = current_user.role in ['reception','nurse','admin'] %}
   {% if can_manage %}
+    <a class="btn btn-sm btn-success me-2" href="{{ url_for('patients.patients_new') }}">Register new</a>
     <a class="btn btn-sm btn-outline-dark" href="{{ url_for('patients.triage_queue') }}">Triage Queue</a>
   {% endif %}
 
@@ -89,9 +92,13 @@
             <td>{{ p.id }}</td>
             <td>{{ p.patient_code }}</td>
             <td>
-              <a href="{{ url_for('patients.patient_detail', patient_id=p.id) }}">
+              {% if current_user.role == 'accountant' %}
                 {{ p.first_name }} {{ p.last_name }}
-              </a>
+              {% else %}
+                <a href="{{ url_for('patients.patient_detail', patient_id=p.id) }}">
+                  {{ p.first_name }} {{ p.last_name }}
+                </a>
+              {% endif %}
             </td>
             <td>{{ p.phone }}</td>
             <td>{{ p.insurance_provider or '—' }}</td>
@@ -170,6 +177,8 @@
                   {% endif %}
                 {% endif %}
 
+              {% endif %}
+              {% if can_view_billing_history %}
                 <a class="btn btn-sm btn-outline-secondary"
                    href="{{ url_for('billing.patient_billing', patient_id=p.id) }}">
                   Billing History

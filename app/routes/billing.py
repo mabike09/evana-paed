@@ -951,7 +951,7 @@ def _sum_payments(payments):
 
 @bp.get("/billing/patient/<int:patient_id>", endpoint="patient_billing")
 @login_required
-@roles_required("reception", "nurse", "doctor", "pediatrician", "admin")
+@roles_required("reception", "nurse", "doctor", "pediatrician", "accountant", "admin")
 def patient_billing(patient_id):
     p = Patient.query.get_or_404(patient_id)
 

@@ -9,7 +9,7 @@
   <div class="d-flex gap-2">
     <a class="btn btn-outline-secondary" href="{{ url_for('finance.petty_cash_ledger', start_date=filters.start_date, end_date=filters.end_date, category=filters.category, transaction_type=filters.transaction_type, voucher_number=filters.voucher_number, payee=filters.payee, status=filters.status, entered_by=filters.entered_by, approved_by=filters.approved_by, export='excel') }}">Export Excel/CSV</a>
     <a class="btn btn-outline-secondary" href="{{ url_for('finance.petty_cash_ledger', start_date=filters.start_date, end_date=filters.end_date, category=filters.category, transaction_type=filters.transaction_type, voucher_number=filters.voucher_number, payee=filters.payee, status=filters.status, entered_by=filters.entered_by, approved_by=filters.approved_by, export='pdf') }}">Printable Ledger PDF</a>
-    {% if can_manage_finance %}
+    {% if can_manage_petty_cash %}
       <a class="btn btn-outline-primary" href="{{ url_for('finance.petty_cash_reconciliation') }}">Reconciliation</a>
     {% endif %}
   </div>
@@ -39,7 +39,7 @@
             <label class="form-label">Action</label>
             <select class="form-select" name="action_mode" id="action_mode">
               <option value="transaction">Normal transaction</option>
-              {% if can_manage_finance %}
+              {% if can_manage_petty_cash %}
                 <option value="initial_float">Set initial float</option>
                 <option value="top_up">Top up petty cash</option>
                 <option value="cash_returned">Record cash returned</option>
@@ -53,10 +53,12 @@
           <div class="col-md-6">
             <label class="form-label">Transaction type</label>
             <select class="form-select" name="transaction_type" id="transaction_type" required>
-              {% if can_manage_finance %}
+              {% if can_record_petty_cash_in %}
                 <option value="cash_in">Cash in</option>
               {% endif %}
-              <option value="cash_out" {% if not can_manage_finance %}selected{% endif %}>Cash out</option>
+              {% if can_record_petty_cash_out %}
+                <option value="cash_out" {% if not can_record_petty_cash_in %}selected{% endif %}>Cash out</option>
+              {% endif %}
             </select>
           </div>
           <div class="col-md-6"><label class="form-label">Voucher number</label><input class="form-control" type="text" name="voucher_number" id="voucher_number"></div>

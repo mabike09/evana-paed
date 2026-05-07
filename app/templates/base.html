@@ -34,7 +34,7 @@
     <div class="collapse navbar-collapse" id="mainNav">
       <ul class="navbar-nav me-auto">
         {% if current_user.is_authenticated %}
-          {% if current_user.role in ['reception','nurse','admin'] %}
+          {% if current_user.role in ['reception','nurse','accountant','admin'] %}
             <li class="nav-item"><a class="nav-link" href="{{ url_for('patients.patients_list') }}">Patients</a></li>
             <li class="nav-item"><a class="nav-link" href="{{ url_for('reports.reports_dashboard') }}">Reports</a></li>
           {% endif %}
@@ -58,7 +58,7 @@
                 {% if current_user.role in ['accountant','admin'] %}
                   <li><a class="dropdown-item" href="{{ url_for('finance.accounts_payable') }}">Accounts Payable</a></li>
                 {% endif %}
-                {% if current_user.role in ['accountant','admin'] %}
+                {% if current_user.role == 'admin' %}
                   <li><a class="dropdown-item" href="{{ url_for('finance.petty_cash_reconciliation') }}">Reconciliation</a></li>
                 {% endif %}
               </ul>
