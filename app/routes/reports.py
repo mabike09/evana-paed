@@ -83,7 +83,7 @@ def _extract_pharmacy_clear_ts(description):
 
 @bp.route("/reports")
 @login_required
-@roles_required("reception", "nurse", "admin")
+@roles_required("reception", "nurse", "accountant", "admin")
 def reports_dashboard():
     today = eat_now().date()
     start_date = _parse_date_param(request.args.get("start_date"), today)
