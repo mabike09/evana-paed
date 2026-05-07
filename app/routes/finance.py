@@ -917,7 +917,7 @@ def petty_cash_ledger():
 
 @bp.route("/finance/petty-cash/reconciliation", methods=["GET", "POST"])
 @login_required
-@roles_required("admin")
+@roles_required("accountant", "admin")
 def petty_cash_reconciliation():
     if request.method == "POST":
         reconciliation_date = _parse_date(request.form.get("reconciliation_date"), eat_today())

@@ -1033,7 +1033,7 @@ def patient_billing(patient_id):
 # ========= Print Views =========
 @bp.get("/billing/invoice/<int:invoice_id>/print", endpoint="invoice_print")
 @login_required
-@roles_required("reception", "nurse", "doctor", "pediatrician", "admin")
+@roles_required("reception", "nurse", "doctor", "pediatrician", "accountant", "admin")
 def invoice_print(invoice_id):
     inv = Invoice.query.get_or_404(invoice_id)
 
@@ -1062,7 +1062,7 @@ def invoice_print(invoice_id):
 
 @bp.get("/billing/receipt/<int:payment_id>/print", endpoint="receipt_print")
 @login_required
-@roles_required("reception", "nurse", "admin")
+@roles_required("reception", "nurse", "accountant", "admin")
 def receipt_print(payment_id):
     pay = Payment.query.get_or_404(payment_id)
 
