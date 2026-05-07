@@ -9,6 +9,7 @@
 
 {# Ensure safe_lines is always defined to avoid "undefined" errors #}
 {% set safe_lines = safe_lines|default({}) %}
+{% set can_modify_billing = current_user.role in ['reception','nurse','admin'] %}
 
 <div class="row g-3 mb-4">
   <div class="col-md-4">
@@ -75,12 +76,14 @@
                   Actions
                 </button>
                 <ul class="dropdown-menu dropdown-menu-end">
+                  {% if can_modify_billing %}
                   <li>
                     <button class="dropdown-item" data-bs-toggle="modal" data-bs-target="#payModal-{{ inv.id }}">
                       Receive Payment
                     </button>
                   </li>
-                  {% if can_edit %}
+                  {% endif %}
+                  {% if can_modify_billing and can_edit %}
                   <li>
                     <a class="dropdown-item" href="{{ url_for('billing.invoice_edit', invoice_id=inv.id) }}">
                       Edit Invoice
@@ -137,6 +140,7 @@
   </div>
 
   {# === Payment Modals rendered OUTSIDE the table to avoid table-voodoo === #}
+  {% if can_modify_billing %}
   {% for r in invoice_rows %}
     {% set inv = r.obj %}
     <div class="modal" id="payModal-{{ inv.id }}" tabindex="-1" aria-hidden="true" aria-labelledby="payModalTitle-{{ inv.id }}">
@@ -207,6 +211,7 @@
       </div>
     </div>
   {% endfor %}
+  {% endif %}
 
 {% else %}
   <div class="alert alert-light border">No invoices yet.</div>
