@@ -3,7 +3,14 @@
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-3">
   <h1 class="h4 mb-0">Patient Profile — {{ p.first_name }} {{ p.last_name }}</h1>
-  <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('patients.patients_list') }}">Back to Patients</a>
+  <div class="d-flex gap-2">
+    {% if current_user.role in ['reception', 'nurse', 'doctor', 'pediatrician', 'admin'] %}
+      <a class="btn btn-sm btn-outline-primary" href="{{ url_for('patients.patient_visit_history', patient_id=p.id) }}">
+        View Visit History{% if visits_count is defined %} ({{ visits_count }}){% endif %}
+      </a>
+    {% endif %}
+    <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('patients.patients_list') }}">Back to Patients</a>
+  </div>
 </div>
 
 <div class="card mb-4">
