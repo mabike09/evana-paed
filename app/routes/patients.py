@@ -1418,10 +1418,33 @@ def patient_detail(patient_id):
         .all()
     )
 
+    visits_count = Visit.query.filter_by(patient_id=p.id).count()
+
     return render_template(
         "patient_profile.html",
         p=p,
         invoices=invoices,
+        visits_count=visits_count,
+    )
+
+
+@bp.get("/patients/<int:patient_id>/visit-history")
+@login_required
+@roles_required("reception", "nurse", "doctor", "pediatrician", "admin")
+def patient_visit_history(patient_id):
+    """Read-only patient visit history for reception, nurses, and clinicians."""
+    p = Patient.query.get_or_404(patient_id)
+    visits = (
+        Visit.query
+        .filter_by(patient_id=p.id)
+        .order_by(Visit.visit_date.desc(), Visit.id.desc())
+        .all()
+    )
+
+    return render_template(
+        "patient_visit_history.html",
+        p=p,
+        visits=visits,
     )
 
 

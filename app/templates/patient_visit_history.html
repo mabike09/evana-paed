@@ -1,0 +1,122 @@
+{% extends "base.html" %}
+{% block title %}Visit History — {{ p.first_name }} {{ p.last_name }}{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <div>
+    <h1 class="h4 mb-0">Visit History — {{ p.first_name }} {{ p.last_name }}</h1>
+    <div class="text-muted small">Read-only triage details and doctor clinical notes.</div>
+  </div>
+  <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('patients.patient_detail', patient_id=p.id) }}">Back to Patient Profile</a>
+</div>
+
+{% if visits %}
+  <div class="accordion" id="visitHistoryAccordion">
+    {% for visit in visits %}
+      {% set notes = visit.notes or '' %}
+      {% set triage_notes = notes %}
+      {% set presenting_txt = '' %}
+      {% set hopc_txt = '' %}
+      {% set exam_txt = '' %}
+      {% set plan_txt = '' %}
+
+      {% if '[Presenting]' in notes %}
+        {% set triage_notes = notes.split('[Presenting]', 1)[0] | trim %}
+        {% set presenting_txt = notes.split('[Presenting]', 1)[1] %}
+        {% if '[HOPC]' in presenting_txt %}
+          {% set presenting_txt = presenting_txt.split('[HOPC]', 1)[0] | trim %}
+        {% else %}
+          {% set presenting_txt = presenting_txt | trim %}
+        {% endif %}
+      {% endif %}
+
+      {% if '[HOPC]' in notes %}
+        {% set hopc_txt = notes.split('[HOPC]', 1)[1] %}
+        {% if '[Exam]' in hopc_txt %}
+          {% set hopc_txt = hopc_txt.split('[Exam]', 1)[0] | trim %}
+        {% else %}
+          {% set hopc_txt = hopc_txt | trim %}
+        {% endif %}
+      {% endif %}
+
+      {% if '[Exam]' in notes %}
+        {% set exam_txt = notes.split('[Exam]', 1)[1] %}
+        {% if '[Plan]' in exam_txt %}
+          {% set exam_txt = exam_txt.split('[Plan]', 1)[0] | trim %}
+        {% else %}
+          {% set exam_txt = exam_txt | trim %}
+        {% endif %}
+      {% endif %}
+
+      {% if '[Plan]' in notes %}
+        {% set plan_txt = notes.split('[Plan]', 1)[1] | trim %}
+      {% endif %}
+
+      <div class="accordion-item">
+        <h2 class="accordion-header" id="visit-heading-{{ visit.id }}">
+          <button class="accordion-button {% if not loop.first %}collapsed{% endif %}" type="button" data-bs-toggle="collapse" data-bs-target="#visit-collapse-{{ visit.id }}" aria-expanded="{{ 'true' if loop.first else 'false' }}" aria-controls="visit-collapse-{{ visit.id }}">
+            <span class="fw-semibold me-2">Visit #{{ visit.id }}</span>
+            <span>{{ visit.visit_date or 'No date' }}</span>
+            {% if visit.reason %}<span class="text-muted ms-2">— {{ visit.reason }}</span>{% endif %}
+            {% if visit.status %}<span class="badge bg-light text-dark ms-2">{{ visit.status }}</span>{% endif %}
+          </button>
+        </h2>
+        <div id="visit-collapse-{{ visit.id }}" class="accordion-collapse collapse {% if loop.first %}show{% endif %}" aria-labelledby="visit-heading-{{ visit.id }}" data-bs-parent="#visitHistoryAccordion">
+          <div class="accordion-body">
+            <div class="row g-3 mb-3">
+              <div class="col-6 col-md-2"><div class="text-muted small">Weight</div><div>{{ visit.weight_kg or '—' }} kg</div></div>
+              <div class="col-6 col-md-2"><div class="text-muted small">Height</div><div>{{ visit.height_cm or '—' }} cm</div></div>
+              <div class="col-6 col-md-2"><div class="text-muted small">Temp</div><div>{{ visit.temp_c or '—' }} °C</div></div>
+              <div class="col-6 col-md-2"><div class="text-muted small">Pulse</div><div>{{ visit.pulse_bpm or '—' }} bpm</div></div>
+              <div class="col-6 col-md-2"><div class="text-muted small">BP</div><div>{% if visit.bp_sys and visit.bp_dia %}{{ visit.bp_sys }}/{{ visit.bp_dia }}{% else %}—{% endif %}</div></div>
+              <div class="col-6 col-md-2"><div class="text-muted small">SpO₂</div><div>{{ visit.spo2 or '—' }} %</div></div>
+            </div>
+
+            <div class="card mb-3">
+              <div class="card-header fw-semibold">Triage / Nurse Notes</div>
+              <div class="card-body">
+                {% if triage_notes %}
+                  <div style="white-space: pre-wrap;">{{ triage_notes }}</div>
+                {% else %}
+                  <div class="text-muted">No triage notes recorded.</div>
+                {% endif %}
+              </div>
+            </div>
+
+            <div class="card">
+              <div class="card-header fw-semibold">Doctor Clinical Notes</div>
+              <div class="card-body">
+                <dl class="row mb-0">
+                  <dt class="col-sm-4 col-lg-3">Presenting Complaints</dt>
+                  <dd class="col-sm-8 col-lg-9" style="white-space: pre-wrap;">{{ presenting_txt or '—' }}</dd>
+
+                  <dt class="col-sm-4 col-lg-3">History of Presenting Complaints</dt>
+                  <dd class="col-sm-8 col-lg-9" style="white-space: pre-wrap;">{{ hopc_txt or '—' }}</dd>
+
+                  <dt class="col-sm-4 col-lg-3">Examination Findings</dt>
+                  <dd class="col-sm-8 col-lg-9" style="white-space: pre-wrap;">{{ exam_txt or '—' }}</dd>
+
+                  <dt class="col-sm-4 col-lg-3">Diagnosis</dt>
+                  <dd class="col-sm-8 col-lg-9" style="white-space: pre-wrap;">{{ visit.diagnosis or '—' }}</dd>
+
+                  <dt class="col-sm-4 col-lg-3">Treatment Plan</dt>
+                  <dd class="col-sm-8 col-lg-9" style="white-space: pre-wrap;">{{ plan_txt or '—' }}</dd>
+                </dl>
+
+                {% if not presenting_txt and not hopc_txt and not exam_txt and not plan_txt and notes and not triage_notes %}
+                  <hr>
+                  <div class="text-muted small mb-1">Clinical Notes</div>
+                  <div style="white-space: pre-wrap;">{{ notes }}</div>
+                {% endif %}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    {% endfor %}
+  </div>
+{% else %}
+  <div class="card">
+    <div class="card-body text-muted">No visits recorded for this patient yet.</div>
+  </div>
+{% endif %}
+{% endblock %}
