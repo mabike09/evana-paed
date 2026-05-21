@@ -64,6 +64,9 @@
                 {% if current_user.role in ['accountant','admin'] %}
                   <li><a class="dropdown-item" href="{{ url_for('finance.expense_tracker') }}">Expense Tracker</a></li>
                 {% endif %}
+                {% if current_user.role in ['accountant','admin'] %}
+                  <li><a class="dropdown-item" href="{{ url_for('finance.income_statement') }}">Income Statement</a></li>
+                {% endif %}
               </ul>
             </li>
           {% endif %}

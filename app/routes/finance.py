@@ -21,6 +21,7 @@ from ..models import (
     APBill,
     APBillLine,
     APPayment,
+    Payment,
     APRecurringTemplate,
     APSupplier,
     ExpenseCategory,
@@ -801,6 +802,108 @@ def ap_payment_proof(payment_id: int):
         return redirect(url_for("finance.accounts_payable"))
     return send_file(os.path.join(current_app.config["UPLOAD_FOLDER"], payment.proof_attachment_path), as_attachment=False)
 
+
+
+@bp.route("/finance/income-statement", methods=["GET"])
+@login_required
+@roles_required("accountant", "admin")
+def income_statement():
+    today = eat_today()
+    period = (request.args.get("period") or "this_month").strip().lower()
+    start_date = _parse_date(request.args.get("start_date"))
+    end_date = _parse_date(request.args.get("end_date"))
+
+    if period == "this_month":
+        start_date = today.replace(day=1)
+        end_date = today
+    elif period == "last_month":
+        first_this_month = today.replace(day=1)
+        end_date = first_this_month - timedelta(days=1)
+        start_date = end_date.replace(day=1)
+    elif period == "this_year":
+        start_date = date(today.year, 1, 1)
+        end_date = today
+    elif period != "custom":
+        period = "this_month"
+        start_date = today.replace(day=1)
+        end_date = today
+
+    if period == "custom":
+        if not start_date:
+            start_date = today.replace(day=1)
+        if not end_date:
+            end_date = today
+
+    if end_date < start_date:
+        start_date, end_date = end_date, start_date
+
+    start_raw = str(start_date)
+    end_raw = str(end_date)
+
+    cash_revenue = _money(db.session.query(func.coalesce(func.sum(Payment.amount), 0)).filter(
+        Payment.payment_date >= start_raw,
+        Payment.payment_date <= end_raw,
+        Payment.method == "cash",
+    ).scalar())
+
+    insurance_revenue = _money(db.session.query(func.coalesce(func.sum(Payment.amount), 0)).filter(
+        Payment.payment_date >= start_raw,
+        Payment.payment_date <= end_raw,
+        Payment.method == "insurance",
+    ).scalar())
+
+    drug_cost = _money(db.session.query(func.coalesce(func.sum(APBillLine.amount), 0)).join(APBill).filter(
+        APBill.invoice_date >= start_raw,
+        APBill.invoice_date <= end_raw,
+        func.lower(APBillLine.expense_category).in_(["drug supplies", "drugs and medical supplies", "drugs"]),
+    ).scalar())
+
+    lab_supplies_cost = _money(db.session.query(func.coalesce(func.sum(APBillLine.amount), 0)).join(APBill).filter(
+        APBill.invoice_date >= start_raw,
+        APBill.invoice_date <= end_raw,
+        func.lower(APBillLine.expense_category).in_(["laboratory supplies", "lab supplies"]),
+    ).scalar())
+
+    expense_rows = db.session.query(
+        ExpenseCategory.name,
+        func.coalesce(func.sum(ExpenseEntry.amount), 0),
+    ).join(ExpenseEntry, ExpenseEntry.category_id == ExpenseCategory.id).filter(
+        ExpenseEntry.expense_date >= start_raw,
+        ExpenseEntry.expense_date <= end_raw,
+    ).group_by(ExpenseCategory.name).order_by(ExpenseCategory.name.asc()).all()
+
+    operating_expenses = [{"name": name, "amount": _money(total)} for name, total in expense_rows]
+    total_operating_expenses = _money(sum((row["amount"] for row in operating_expenses), Decimal("0.00")))
+
+    total_revenue = _money(cash_revenue + insurance_revenue)
+    cost_of_service = _money(drug_cost + lab_supplies_cost)
+    gross_profit = _money(total_revenue - cost_of_service)
+    net_profit = _money(gross_profit - total_operating_expenses)
+
+    gross_profit_margin = Decimal("0.00")
+    net_income_margin = Decimal("0.00")
+    if total_revenue > 0:
+        gross_profit_margin = (gross_profit / total_revenue * Decimal("100")).quantize(Decimal("0.01"))
+        net_income_margin = (net_profit / total_revenue * Decimal("100")).quantize(Decimal("0.01"))
+
+    return render_template(
+        "finance_income_statement.html",
+        period=period,
+        start_date=start_date,
+        end_date=end_date,
+        cash_revenue=cash_revenue,
+        insurance_revenue=insurance_revenue,
+        total_revenue=total_revenue,
+        drug_cost=drug_cost,
+        lab_supplies_cost=lab_supplies_cost,
+        cost_of_service=cost_of_service,
+        gross_profit=gross_profit,
+        operating_expenses=operating_expenses,
+        total_operating_expenses=total_operating_expenses,
+        net_profit=net_profit,
+        gross_profit_margin=gross_profit_margin,
+        net_income_margin=net_income_margin,
+    )
 
 @bp.route("/finance/petty-cash", methods=["GET", "POST"])
 @login_required
