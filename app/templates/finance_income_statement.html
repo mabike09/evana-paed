@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block title %}Income Statement{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h3 class="mb-0">Income Statement</h3>
+</div>
+<form class="row g-2 mb-4" method="get">
+  <div class="col-md-3">
+    <label class="form-label">Period</label>
+    <select class="form-select" name="period">
+      <option value="this_month" {% if period=='this_month' %}selected{% endif %}>This Month</option>
+      <option value="last_month" {% if period=='last_month' %}selected{% endif %}>Last Month</option>
+      <option value="this_year" {% if period=='this_year' %}selected{% endif %}>This Year</option>
+      <option value="custom" {% if period=='custom' %}selected{% endif %}>Custom</option>
+    </select>
+  </div>
+  <div class="col-md-3">
+    <label class="form-label">Start date</label>
+    <input type="date" class="form-control" name="start_date" value="{{ start_date }}">
+  </div>
+  <div class="col-md-3">
+    <label class="form-label">End date</label>
+    <input type="date" class="form-control" name="end_date" value="{{ end_date }}">
+  </div>
+  <div class="col-md-3 d-flex align-items-end">
+    <button class="btn btn-primary w-100" type="submit">Apply Filter</button>
+  </div>
+</form>
+
+<div class="card">
+  <div class="card-body">
+    <h5>Revenue</h5>
+    <div class="d-flex justify-content-between"><span>- Cash</span><strong>{{ "{:,.2f}".format(cash_revenue) }}</strong></div>
+    <div class="d-flex justify-content-between"><span>- Insurance</span><strong>{{ "{:,.2f}".format(insurance_revenue) }}</strong></div>
+    <div class="d-flex justify-content-between border-top pt-2 mt-2"><strong>Total Revenue</strong><strong>{{ "{:,.2f}".format(total_revenue) }}</strong></div>
+
+    <h5 class="mt-4">Cost of Service</h5>
+    <div class="d-flex justify-content-between"><span>- Drugs</span><strong>{{ "{:,.2f}".format(drug_cost) }}</strong></div>
+    <div class="d-flex justify-content-between"><span>- Lab supplies</span><strong>{{ "{:,.2f}".format(lab_supplies_cost) }}</strong></div>
+    <div class="d-flex justify-content-between border-top pt-2 mt-2"><strong>Total Cost of Service</strong><strong>{{ "{:,.2f}".format(cost_of_service) }}</strong></div>
+
+    <div class="d-flex justify-content-between border-top pt-2 mt-3"><h5>Gross Profit</h5><h5>{{ "{:,.2f}".format(gross_profit) }}</h5></div>
+
+    <h5 class="mt-4">Operating Expenses</h5>
+    {% for row in operating_expenses %}
+      <div class="d-flex justify-content-between"><span>- {{ row.name }}</span><strong>{{ "{:,.2f}".format(row.amount) }}</strong></div>
+    {% else %}
+      <div class="text-muted">No operating expenses for selected period.</div>
+    {% endfor %}
+    <div class="d-flex justify-content-between border-top pt-2 mt-2"><strong>Total Operating Expenses</strong><strong>{{ "{:,.2f}".format(total_operating_expenses) }}</strong></div>
+
+    <div class="d-flex justify-content-between border-top pt-3 mt-3"><h5>Net Profit</h5><h5>{{ "{:,.2f}".format(net_profit) }}</h5></div>
+
+    <h5 class="mt-4">Margin Ratios</h5>
+    <div class="d-flex justify-content-between"><span>- Gross profit margin</span><strong>{{ "{:,.2f}".format(gross_profit_margin) }}%</strong></div>
+    <div class="d-flex justify-content-between"><span>- Net income margin</span><strong>{{ "{:,.2f}".format(net_income_margin) }}%</strong></div>
+  </div>
+</div>
+{% endblock %}
