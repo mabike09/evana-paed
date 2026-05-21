@@ -602,6 +602,32 @@ class APAuditLog(db.Model):
     created_at = db.Column(db.DateTime, default=eat_now, nullable=False, index=True)
 
 
+class ExpenseCategory(db.Model):
+    __tablename__ = "expense_category"
+
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(120), nullable=False, unique=True, index=True)
+    is_active = db.Column(db.Boolean, nullable=False, default=True, index=True)
+    created_by = db.Column(db.String(150), nullable=False)
+    created_at = db.Column(db.DateTime, default=eat_now, nullable=False, index=True)
+
+    expenses = db.relationship("ExpenseEntry", backref="category", lazy=True)
+
+
+class ExpenseEntry(db.Model):
+    __tablename__ = "expense_entry"
+
+    id = db.Column(db.Integer, primary_key=True)
+    expense_date = db.Column(db.String(10), nullable=False, index=True)
+    category_id = db.Column(db.Integer, db.ForeignKey("expense_category.id"), nullable=False, index=True)
+    description = db.Column(db.String(255), nullable=False)
+    vendor_payee = db.Column(db.String(180), nullable=False, index=True)
+    reference = db.Column(db.String(100), index=True)
+    amount = db.Column(db.Numeric(12, 2), nullable=False, default=0)
+    entered_by = db.Column(db.String(150), nullable=False, index=True)
+    created_at = db.Column(db.DateTime, default=eat_now, nullable=False, index=True)
+
+
 class SmsTemplate(db.Model):
     __tablename__ = "sms_template"
 
