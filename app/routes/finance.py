@@ -11,7 +11,7 @@ from decimal import Decimal
 from flask import Blueprint, Response, current_app, flash, redirect, render_template, request, send_file, url_for
 from flask_login import current_user, login_required
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy import inspect, text
+from sqlalchemy import func, inspect, text
 from werkzeug.utils import secure_filename
 
 from ..extensions import db
@@ -23,6 +23,8 @@ from ..models import (
     APPayment,
     APRecurringTemplate,
     APSupplier,
+    ExpenseCategory,
+    ExpenseEntry,
     PettyCashAuditLog,
     PettyCashPeriodLock,
     PettyCashReconciliation,
@@ -422,6 +424,70 @@ def _save_attachment(file_storage):
 @roles_required("reception", "nurse", "accountant", "branch_manager", "admin")
 def finance_home():
     return redirect(url_for("finance.petty_cash_ledger"))
+
+
+@bp.route("/finance/expense-tracker", methods=["GET", "POST"])
+@login_required
+@roles_required("accountant", "admin")
+def expense_tracker():
+    today = str(eat_today())
+    if request.method == "POST":
+        action = (request.form.get("action") or "").strip().lower()
+        if action == "add_category":
+            name = (request.form.get("name") or "").strip()
+            if not name:
+                flash("Category name is required.", "warning")
+            else:
+                exists = ExpenseCategory.query.filter(func.lower(ExpenseCategory.name) == name.lower()).first()
+                if exists:
+                    flash("Category already exists.", "warning")
+                else:
+                    db.session.add(ExpenseCategory(name=name, created_by=current_user.username, is_active=True))
+                    db.session.commit()
+                    flash("Expense category added.", "success")
+            return redirect(url_for("finance.expense_tracker"))
+        if action == "add_expense":
+            try:
+                category_id = int(request.form.get("category_id") or 0)
+            except ValueError:
+                category_id = 0
+            category = ExpenseCategory.query.get(category_id) if category_id else None
+            if not category:
+                flash("Select a valid expense category.", "warning")
+                return redirect(url_for("finance.expense_tracker"))
+            db.session.add(
+                ExpenseEntry(
+                    expense_date=(request.form.get("expense_date") or today).strip(),
+                    category_id=category.id,
+                    description=(request.form.get("description") or "").strip(),
+                    vendor_payee=(request.form.get("vendor_payee") or "").strip(),
+                    reference=(request.form.get("reference") or "").strip() or None,
+                    amount=_money(request.form.get("amount")),
+                    entered_by=current_user.username,
+                )
+            )
+            db.session.commit()
+            flash("Expense recorded.", "success")
+            return redirect(url_for("finance.expense_tracker"))
+
+    start_date = (request.args.get("start_date") or "").strip()
+    end_date = (request.args.get("end_date") or "").strip()
+    query = ExpenseEntry.query.join(ExpenseCategory).order_by(ExpenseEntry.expense_date.desc(), ExpenseEntry.id.desc())
+    if start_date:
+        query = query.filter(ExpenseEntry.expense_date >= start_date)
+    if end_date:
+        query = query.filter(ExpenseEntry.expense_date <= end_date)
+
+    categories = ExpenseCategory.query.filter_by(is_active=True).order_by(ExpenseCategory.name.asc()).all()
+    expenses = query.all()
+    return render_template(
+        "finance_expense_tracker.html",
+        today=today,
+        categories=categories,
+        expenses=expenses,
+        start_date=start_date,
+        end_date=end_date,
+    )
 
 
 @bp.route("/finance/accounts-payable", methods=["GET", "POST"])
