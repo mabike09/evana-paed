@@ -228,4 +228,26 @@ def create_app():
         finally:
             app._billing_queue_closed_at_checked = True  # type: ignore[attr-defined]
 
+    @app.before_request
+    def _ensure_expense_tracker_tables_once():
+        """
+        Create expense tracker tables defensively if migrations are not yet applied.
+        Prevents 500s on /finance/expense-tracker in older deployments.
+        """
+        if getattr(app, "_expense_tracker_tables_checked", False):
+            return
+
+        try:
+            insp = inspect(db.engine)
+            if not insp.has_table("expense_category") or not insp.has_table("expense_entry"):
+                from .models import ExpenseCategory, ExpenseEntry
+
+                ExpenseCategory.__table__.create(bind=db.engine, checkfirst=True)
+                ExpenseEntry.__table__.create(bind=db.engine, checkfirst=True)
+                app.logger.warning("Created missing expense tracker tables at runtime (expense_category/expense_entry).")
+        except Exception as e:
+            app.logger.warning(f"Expense tracker table check skipped: {e}")
+        finally:
+            app._expense_tracker_tables_checked = True  # type: ignore[attr-defined]
+
     return app
