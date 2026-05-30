@@ -170,6 +170,15 @@ def add_payment(patient_id, invoice_id):
         flash("Payment not saved — database error.", "danger")
         return redirect(url_for("billing.patient_billing", patient_id=patient_id))
 
+    try:
+        queued_for_pharmacy = _ensure_pharmacy_queue_for_paid_invoice(inv, patient_id)
+        if queued_for_pharmacy is not None:
+            db.session.commit()
+            flash("Paid drug invoice sent to Pharmacy queue.", "success")
+    except Exception:
+        db.session.rollback()
+        current_app.logger.exception("Failed ensuring PHARMACY queue entry after payment")
+
     # -----------------------------
     # Auto-release LAB after full payment (non-blocking)
     # -----------------------------
@@ -426,6 +435,72 @@ def add_payment(patient_id, invoice_id):
 
     return redirect(url_for("billing.patient_billing", patient_id=patient_id))
 
+
+
+
+def _invoice_paid_total(invoice_id: int) -> Decimal:
+    total = Decimal("0")
+    for payment in Payment.query.filter_by(invoice_id=invoice_id).all():
+        total += Decimal(str(getattr(payment, "amount", 0) or 0))
+    return total
+
+
+def _invoice_is_fully_paid(inv: Invoice | None) -> bool:
+    if not inv:
+        return False
+    inv_total = Decimal(str(getattr(inv, "amount", 0) or 0))
+    if inv_total <= 0:
+        return False
+    return _invoice_paid_total(inv.id) >= inv_total
+
+
+def _invoice_has_drug_lines(invoice_id: int) -> bool:
+    return (
+        InvoiceLine.query
+        .filter_by(invoice_id=invoice_id)
+        .filter(
+            (func.lower(func.trim(func.coalesce(InvoiceLine.kind, ""))) == "drug")
+            | (InvoiceLine.item_id.isnot(None))
+        )
+        .first()
+    ) is not None
+
+
+def _ensure_pharmacy_queue_for_paid_invoice(inv: Invoice, patient_id: int, description: str | None = None):
+    """Create an open pharmacy queue entry once a paid invoice has drug lines."""
+    if not _invoice_is_fully_paid(inv) or not _invoice_has_drug_lines(inv.id):
+        return None
+
+    visit_id = getattr(inv, "visit_id", None)
+    q = BillingQueue.query.filter_by(status="Open")
+    if hasattr(BillingQueue, "kind"):
+        q = q.filter(BillingQueue.kind == "PHARMACY")
+    if visit_id:
+        q = q.filter(BillingQueue.visit_id == visit_id)
+    else:
+        q = q.filter(BillingQueue.patient_id == patient_id)
+
+    existing = q.order_by(BillingQueue.id.desc()).first()
+    if existing:
+        return existing
+
+    pharm_q = BillingQueue()
+    if hasattr(pharm_q, "patient_id"):
+        pharm_q.patient_id = patient_id
+    if hasattr(pharm_q, "visit_id"):
+        pharm_q.visit_id = visit_id
+    if hasattr(pharm_q, "status"):
+        pharm_q.status = "Open"
+    if hasattr(pharm_q, "added_at"):
+        pharm_q.added_at = eat_now()
+    if hasattr(pharm_q, "added_by"):
+        pharm_q.added_by = getattr(current_user, "id", None)
+    if hasattr(pharm_q, "kind"):
+        pharm_q.kind = "PHARMACY"
+    if hasattr(pharm_q, "description"):
+        pharm_q.description = description or "Invoice paid — ready for pharmacy dispensing"
+    db.session.add(pharm_q)
+    return pharm_q
 
 def _normalized_kind(proc_id=None, item_id=None):
     if item_id:
@@ -756,6 +831,15 @@ def invoice_edit(invoice_id):
             _sync_invoice_to_visit(inv)
         except Exception:
             pass
+
+        try:
+            _ensure_pharmacy_queue_for_paid_invoice(
+                inv,
+                inv.patient_id,
+                "Paid invoice updated — ready for pharmacy dispensing",
+            )
+        except Exception:
+            current_app.logger.exception("Failed ensuring PHARMACY queue entry after invoice edit")
 
         db.session.commit()
         flash("Invoice updated (total recalculated).", "success")
