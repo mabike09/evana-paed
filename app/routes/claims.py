@@ -107,11 +107,40 @@ def _advance_claim(claim, new_status):
 def dashboard():
     _sync_missing_claims()
     status_filter = (request.args.get("status") or "").strip()
-    q = InsuranceClaim.query.options(joinedload(InsuranceClaim.invoice), joinedload(InsuranceClaim.patient))
+    start_date = (request.args.get("start_date") or "").strip()
+    end_date = (request.args.get("end_date") or "").strip()
+    insurer_filter = (request.args.get("insurer") or "").strip()
+
+    insurer_choices = [
+        row[0]
+        for row in db.session.query(InsuranceClaim.insurer_name)
+        .filter(InsuranceClaim.insurer_name.isnot(None), InsuranceClaim.insurer_name != "")
+        .distinct()
+        .order_by(InsuranceClaim.insurer_name.asc())
+        .all()
+    ]
+
+    q = InsuranceClaim.query.options(joinedload(InsuranceClaim.invoice), joinedload(InsuranceClaim.patient)).join(Invoice)
+    counts_q = InsuranceClaim.query.join(Invoice)
+    if start_date:
+        q = q.filter(Invoice.issue_date >= start_date)
+        counts_q = counts_q.filter(Invoice.issue_date >= start_date)
+    if end_date:
+        q = q.filter(Invoice.issue_date <= end_date)
+        counts_q = counts_q.filter(Invoice.issue_date <= end_date)
+    if insurer_filter:
+        q = q.filter(InsuranceClaim.insurer_name == insurer_filter)
+        counts_q = counts_q.filter(InsuranceClaim.insurer_name == insurer_filter)
     if status_filter in CLAIM_STATUSES:
         q = q.filter(InsuranceClaim.status == status_filter)
     claims = q.order_by(InsuranceClaim.updated_at.desc(), InsuranceClaim.id.desc()).all()
-    counts = Counter(claim.status for claim in InsuranceClaim.query.all())
+    counts = Counter(claim.status for claim in counts_q.all())
+    filters = {
+        "status": status_filter,
+        "start_date": start_date,
+        "end_date": end_date,
+        "insurer": insurer_filter,
+    }
     totals = {
         "expected": sum((_money(c.expected_amount) for c in claims), Decimal("0.00")),
         "paid": sum((_money(c.paid_amount) for c in claims), Decimal("0.00")),
@@ -125,6 +154,8 @@ def dashboard():
         status_filter=status_filter,
         counts=counts,
         totals=totals,
+        filters=filters,
+        insurer_choices=insurer_choices,
     )
 
 
@@ -155,4 +186,12 @@ def update_status(claim_id):
     _advance_claim(claim, new_status)
     db.session.commit()
     flash(f"Claim updated to {CLAIM_STATUS_LABELS[new_status]}.", "success")
-    return redirect(url_for("claims.dashboard", status=request.args.get("status", "")))
+    return redirect(
+        url_for(
+            "claims.dashboard",
+            status=request.args.get("status", ""),
+            start_date=request.args.get("start_date", ""),
+            end_date=request.args.get("end_date", ""),
+            insurer=request.args.get("insurer", ""),
+        )
+    )
