@@ -1,4 +1,5 @@
 from collections import Counter
+from datetime import datetime
 from decimal import Decimal
 
 from flask import Blueprint, flash, redirect, render_template, request, url_for
@@ -81,6 +82,17 @@ def _paid_total(invoice_id):
     return total
 
 
+def _payment_date_from_form(default):
+    paid_date = (request.form.get("paid_date") or "").strip()
+    if not paid_date:
+        return default
+    try:
+        return datetime.strptime(paid_date, "%Y-%m-%d")
+    except ValueError:
+        flash("Invalid payment date. Using today instead.", "warning")
+        return default
+
+
 def _advance_claim(claim, new_status):
     now = eat_now()
     claim.status = new_status
@@ -92,7 +104,7 @@ def _advance_claim(claim, new_status):
         claim.officer_id = getattr(current_user, "id", None)
         claim.submitted_to_insurance_at = now
     elif new_status == "paid":
-        claim.paid_at = now
+        claim.paid_at = _payment_date_from_form(now)
         claim.paid_amount = _money(request.form.get("paid_amount") or _paid_total(claim.invoice_id) or claim.expected_amount)
         claim.insurer_reference = (request.form.get("insurer_reference") or claim.insurer_reference or "").strip()
     elif new_status == "reconciled":
