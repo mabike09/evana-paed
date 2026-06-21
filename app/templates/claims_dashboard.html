@@ -14,10 +14,39 @@
   <div class="col-md-4"><div class="card"><div class="card-body"><div class="text-muted">Outstanding</div><div class="h4 text-warning">UGX {{ "{:,.0f}".format(totals.outstanding) }}</div></div></div></div>
 </div>
 
+<form method="get" class="card mb-3">
+  <div class="card-body">
+    <div class="row g-2 align-items-end">
+      <div class="col-md-3">
+        <label class="form-label" for="start_date">From date</label>
+        <input class="form-control" id="start_date" type="date" name="start_date" value="{{ filters.start_date }}">
+      </div>
+      <div class="col-md-3">
+        <label class="form-label" for="end_date">To date</label>
+        <input class="form-control" id="end_date" type="date" name="end_date" value="{{ filters.end_date }}">
+      </div>
+      <div class="col-md-3">
+        <label class="form-label" for="insurer">Insurance company</label>
+        <select class="form-select" id="insurer" name="insurer">
+          <option value="">All insurance companies</option>
+          {% for insurer in insurer_choices %}
+            <option value="{{ insurer }}" {% if filters.insurer == insurer %}selected{% endif %}>{{ insurer }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-3 d-flex gap-2">
+        {% if status_filter %}<input type="hidden" name="status" value="{{ status_filter }}">{% endif %}
+        <button class="btn btn-primary" type="submit">Apply filters</button>
+        <a class="btn btn-outline-secondary" href="{{ url_for('claims.dashboard') }}">Reset</a>
+      </div>
+    </div>
+  </div>
+</form>
+
 <div class="mb-3 d-flex flex-wrap gap-2">
-  <a class="btn btn-sm {{ 'btn-primary' if not status_filter else 'btn-outline-primary' }}" href="{{ url_for('claims.dashboard') }}">All</a>
+  <a class="btn btn-sm {{ 'btn-primary' if not status_filter else 'btn-outline-primary' }}" href="{{ url_for('claims.dashboard', start_date=filters.start_date, end_date=filters.end_date, insurer=filters.insurer) }}">All</a>
   {% for st in statuses %}
-    <a class="btn btn-sm {{ 'btn-primary' if status_filter == st else 'btn-outline-primary' }}" href="{{ url_for('claims.dashboard', status=st) }}">
+    <a class="btn btn-sm {{ 'btn-primary' if status_filter == st else 'btn-outline-primary' }}" href="{{ url_for('claims.dashboard', status=st, start_date=filters.start_date, end_date=filters.end_date, insurer=filters.insurer) }}">
       {{ status_labels[st] }} <span class="badge text-bg-light">{{ counts.get(st, 0) }}</span>
     </a>
   {% endfor %}
@@ -36,7 +65,7 @@
         <td class="text-end">{{ "{:,.0f}".format(claim.expected_amount or 0) }}</td>
         <td class="text-end">{{ "{:,.0f}".format(claim.paid_amount or 0) }}</td>
         <td style="min-width: 330px;">
-          <form method="post" action="{{ url_for('claims.update_status', claim_id=claim.id, status=status_filter) }}" class="row g-1">
+          <form method="post" action="{{ url_for('claims.update_status', claim_id=claim.id, status=status_filter, start_date=filters.start_date, end_date=filters.end_date, insurer=filters.insurer) }}" class="row g-1">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <div class="col-6"><select name="status" class="form-select form-select-sm">{% for st in statuses %}<option value="{{ st }}" {% if claim.status == st %}selected{% endif %}>{{ status_labels[st] }}</option>{% endfor %}</select></div>
             <div class="col-6"><input name="paid_amount" class="form-control form-control-sm" placeholder="Paid amount"></div>
