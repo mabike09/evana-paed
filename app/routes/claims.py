@@ -1,4 +1,5 @@
 from collections import Counter
+from datetime import datetime
 from decimal import Decimal
 
 from flask import Blueprint, flash, redirect, render_template, request, url_for
@@ -30,6 +31,13 @@ def _is_insurance_invoice(inv):
     return bool(insurer and insurer != "cash")
 
 
+def _claim_insurer_name(patient):
+    insurer = (getattr(patient, "insurance_provider", None) or "").strip()
+    if not insurer or insurer.lower() == "cash":
+        return "Insurance"
+    return insurer
+
+
 def ensure_claim_for_invoice(inv):
     if not _is_insurance_invoice(inv):
         return None
@@ -42,7 +50,7 @@ def ensure_claim_for_invoice(inv):
     claim = InsuranceClaim(
         invoice_id=inv.id,
         patient_id=inv.patient_id,
-        insurer_name=(getattr(patient, "insurance_provider", None) or "Insurance").strip(),
+        insurer_name=_claim_insurer_name(patient),
         policy_number=getattr(patient, "policy_number", None),
         status="draft",
         expected_amount=_money(inv.amount),
@@ -74,6 +82,17 @@ def _paid_total(invoice_id):
     return total
 
 
+def _payment_date_from_form(default):
+    paid_date = (request.form.get("paid_date") or "").strip()
+    if not paid_date:
+        return default
+    try:
+        return datetime.strptime(paid_date, "%Y-%m-%d")
+    except ValueError:
+        flash("Invalid payment date. Using today instead.", "warning")
+        return default
+
+
 def _advance_claim(claim, new_status):
     now = eat_now()
     claim.status = new_status
@@ -85,7 +104,7 @@ def _advance_claim(claim, new_status):
         claim.officer_id = getattr(current_user, "id", None)
         claim.submitted_to_insurance_at = now
     elif new_status == "paid":
-        claim.paid_at = now
+        claim.paid_at = _payment_date_from_form(now)
         claim.paid_amount = _money(request.form.get("paid_amount") or _paid_total(claim.invoice_id) or claim.expected_amount)
         claim.insurer_reference = (request.form.get("insurer_reference") or claim.insurer_reference or "").strip()
     elif new_status == "reconciled":
@@ -103,15 +122,48 @@ def _advance_claim(claim, new_status):
 
 @bp.get("/")
 @login_required
-@roles_required("claims_officer", "reception", "accountant", "admin")
+@roles_required("claims_officer", "claims_manager", "reception", "admin")
 def dashboard():
     _sync_missing_claims()
     status_filter = (request.args.get("status") or "").strip()
-    q = InsuranceClaim.query.options(joinedload(InsuranceClaim.invoice), joinedload(InsuranceClaim.patient))
+    start_date = (request.args.get("start_date") or "").strip()
+    end_date = (request.args.get("end_date") or "").strip()
+    insurer_filter = (request.args.get("insurer") or "").strip()
+
+    insurer_choices = [
+        row[0]
+        for row in db.session.query(InsuranceClaim.insurer_name)
+        .filter(
+            InsuranceClaim.insurer_name.isnot(None),
+            InsuranceClaim.insurer_name != "",
+            func.lower(InsuranceClaim.insurer_name) != "cash",
+        )
+        .distinct()
+        .order_by(InsuranceClaim.insurer_name.asc())
+        .all()
+    ]
+
+    q = InsuranceClaim.query.options(joinedload(InsuranceClaim.invoice), joinedload(InsuranceClaim.patient)).join(Invoice)
+    counts_q = InsuranceClaim.query.join(Invoice)
+    if start_date:
+        q = q.filter(Invoice.issue_date >= start_date)
+        counts_q = counts_q.filter(Invoice.issue_date >= start_date)
+    if end_date:
+        q = q.filter(Invoice.issue_date <= end_date)
+        counts_q = counts_q.filter(Invoice.issue_date <= end_date)
+    if insurer_filter:
+        q = q.filter(InsuranceClaim.insurer_name == insurer_filter)
+        counts_q = counts_q.filter(InsuranceClaim.insurer_name == insurer_filter)
     if status_filter in CLAIM_STATUSES:
         q = q.filter(InsuranceClaim.status == status_filter)
     claims = q.order_by(InsuranceClaim.updated_at.desc(), InsuranceClaim.id.desc()).all()
-    counts = Counter(claim.status for claim in InsuranceClaim.query.all())
+    counts = Counter(claim.status for claim in counts_q.all())
+    filters = {
+        "status": status_filter,
+        "start_date": start_date,
+        "end_date": end_date,
+        "insurer": insurer_filter,
+    }
     totals = {
         "expected": sum((_money(c.expected_amount) for c in claims), Decimal("0.00")),
         "paid": sum((_money(c.paid_amount) for c in claims), Decimal("0.00")),
@@ -125,6 +177,8 @@ def dashboard():
         status_filter=status_filter,
         counts=counts,
         totals=totals,
+        filters=filters,
+        insurer_choices=insurer_choices,
     )
 
 
@@ -145,14 +199,35 @@ def verify_invoice(invoice_id):
 
 @bp.post("/<int:claim_id>/status")
 @login_required
-@roles_required("claims_officer", "accountant", "admin")
+@roles_required("claims_officer", "claims_manager", "reception", "admin")
 def update_status(claim_id):
     claim = InsuranceClaim.query.get_or_404(claim_id)
     new_status = (request.form.get("status") or "").strip()
     if new_status not in CLAIM_STATUSES:
         flash("Invalid claim status.", "danger")
         return redirect(url_for("claims.dashboard"))
+    if getattr(current_user, "role", None) == "reception" and (
+        claim.status != "draft" or new_status != "submitted_to_claims_officer"
+    ):
+        flash("Receptionists can only submit draft claims to the claims officer.", "danger")
+        return redirect(
+            url_for(
+                "claims.dashboard",
+                status=request.args.get("status", ""),
+                start_date=request.args.get("start_date", ""),
+                end_date=request.args.get("end_date", ""),
+                insurer=request.args.get("insurer", ""),
+            )
+        )
     _advance_claim(claim, new_status)
     db.session.commit()
     flash(f"Claim updated to {CLAIM_STATUS_LABELS[new_status]}.", "success")
-    return redirect(url_for("claims.dashboard", status=request.args.get("status", "")))
+    return redirect(
+        url_for(
+            "claims.dashboard",
+            status=request.args.get("status", ""),
+            start_date=request.args.get("start_date", ""),
+            end_date=request.args.get("end_date", ""),
+            insurer=request.args.get("insurer", ""),
+        )
+    )
