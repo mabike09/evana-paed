@@ -145,6 +145,69 @@ class Payment(db.Model):
     amount = db.Column(db.Numeric(12, 2), nullable=False, default=0)
 
 
+
+CLAIM_STATUSES = [
+    "draft",
+    "submitted_to_claims_officer",
+    "submitted_to_insurance",
+    "paid",
+    "reconciled",
+    "rejected",
+    "closed",
+]
+
+CLAIM_STATUS_LABELS = {
+    "draft": "Draft",
+    "submitted_to_claims_officer": "Submitted to Claims Officer",
+    "submitted_to_insurance": "Submitted to Insurance",
+    "paid": "Paid",
+    "reconciled": "Reconciled",
+    "rejected": "Rejected",
+    "closed": "Closed",
+}
+
+
+class InsuranceClaim(db.Model):
+    __tablename__ = "insurance_claim"
+
+    id = db.Column(db.Integer, primary_key=True)
+    invoice_id = db.Column(db.Integer, db.ForeignKey("invoice.id"), nullable=False, unique=True, index=True)
+    patient_id = db.Column(db.Integer, db.ForeignKey("patient.id"), nullable=False, index=True)
+    insurer_name = db.Column(db.String(120), nullable=False, index=True)
+    policy_number = db.Column(db.String(120))
+    status = db.Column(db.String(40), nullable=False, default="draft", index=True)
+    verified_by_id = db.Column(db.Integer, db.ForeignKey("user.id"), index=True)
+    verified_at = db.Column(db.DateTime)
+    submitted_to_officer_at = db.Column(db.DateTime)
+    officer_id = db.Column(db.Integer, db.ForeignKey("user.id"), index=True)
+    submitted_to_insurance_at = db.Column(db.DateTime)
+    paid_at = db.Column(db.DateTime)
+    reconciled_at = db.Column(db.DateTime)
+    rejected_at = db.Column(db.DateTime)
+    closed_at = db.Column(db.DateTime)
+    expected_amount = db.Column(db.Numeric(12, 2), nullable=False, default=0)
+    paid_amount = db.Column(db.Numeric(12, 2), nullable=False, default=0)
+    insurer_reference = db.Column(db.String(120))
+    rejection_reason = db.Column(db.Text)
+    reconciliation_notes = db.Column(db.Text)
+    follow_up_notes = db.Column(db.Text)
+    created_at = db.Column(db.DateTime, default=eat_now, nullable=False, index=True)
+    updated_at = db.Column(db.DateTime, default=eat_now, onupdate=eat_now, nullable=False)
+
+    invoice = db.relationship("Invoice", backref=db.backref("insurance_claim", uselist=False, lazy=True))
+    patient = db.relationship("Patient", backref=db.backref("insurance_claims", lazy=True))
+    verified_by = db.relationship("User", foreign_keys=[verified_by_id])
+    officer = db.relationship("User", foreign_keys=[officer_id])
+
+    @property
+    def balance(self):
+        return (self.expected_amount or 0) - (self.paid_amount or 0)
+
+    @property
+    def status_label(self):
+        return CLAIM_STATUS_LABELS.get(self.status, (self.status or "").replace("_", " ").title())
+
+
 # ---------------------------
 # Auth: User
 # ---------------------------

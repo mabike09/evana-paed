@@ -1035,7 +1035,7 @@ def _sum_payments(payments):
 
 @bp.get("/billing/patient/<int:patient_id>", endpoint="patient_billing")
 @login_required
-@roles_required("reception", "nurse", "doctor", "pediatrician", "accountant", "admin")
+@roles_required("reception", "nurse", "doctor", "pediatrician", "accountant", "claims_officer", "admin")
 def patient_billing(patient_id):
     p = Patient.query.get_or_404(patient_id)
 
@@ -1086,11 +1086,15 @@ def patient_billing(patient_id):
             except Exception:
                 visit_label = None
 
+        claim = getattr(inv, "insurance_claim", None)
+        claim_label = getattr(claim, "status_label", None) if claim else None
+
         rows.append({
             "obj": inv,
+            "claim": claim,
             "number": getattr(inv, "number", None) or f"INV-{inv.id}",
             "issue_date": getattr(inv, "issue_date", None),
-            "status": getattr(inv, "status", None) or getattr(inv, "payer_type", None) or "",
+            "status": claim_label or getattr(inv, "status", None) or getattr(inv, "payer_type", None) or "",
             "total": inv_total,
             "paid": paid,
             "balance": balance,

@@ -90,6 +90,14 @@
                     </a>
                   </li>
                   {% endif %}
+                  {% if can_modify_billing and inv.payer_type == 'Insurance' %}
+                  <li>
+                    <form method="post" action="{{ url_for('claims.verify_invoice', invoice_id=inv.id) }}">
+                      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                      <button class="dropdown-item" type="submit">Verify & Submit to Claims</button>
+                    </form>
+                  </li>
+                  {% endif %}
                   <li>
                     <a class="dropdown-item" target="_blank" href="{{ url_for('billing.invoice_print', invoice_id=inv.id) }}">
                       Print Invoice
