@@ -1,0 +1,158 @@
+from collections import Counter
+from decimal import Decimal
+
+from flask import Blueprint, flash, redirect, render_template, request, url_for
+from flask_login import current_user, login_required
+from sqlalchemy import func
+from sqlalchemy.orm import joinedload
+
+from ..extensions import db
+from ..models import CLAIM_STATUS_LABELS, CLAIM_STATUSES, InsuranceClaim, Invoice, Patient, Payment
+from ..permissions import roles_required
+from ..timezone import eat_now
+
+bp = Blueprint("claims", __name__, url_prefix="/claims")
+
+
+def _money(value):
+    try:
+        return Decimal(str(value or 0)).quantize(Decimal("0.01"))
+    except Exception:
+        return Decimal("0.00")
+
+
+def _is_insurance_invoice(inv):
+    if not inv:
+        return False
+    if (getattr(inv, "payer_type", "") or "").strip().lower() == "insurance":
+        return True
+    insurer = (getattr(inv.patient, "insurance_provider", "") or "").strip().lower() if inv.patient else ""
+    return bool(insurer and insurer != "cash")
+
+
+def ensure_claim_for_invoice(inv):
+    if not _is_insurance_invoice(inv):
+        return None
+    existing = getattr(inv, "insurance_claim", None)
+    if existing:
+        if _money(existing.expected_amount) != _money(inv.amount):
+            existing.expected_amount = _money(inv.amount)
+        return existing
+    patient = inv.patient
+    claim = InsuranceClaim(
+        invoice_id=inv.id,
+        patient_id=inv.patient_id,
+        insurer_name=(getattr(patient, "insurance_provider", None) or "Insurance").strip(),
+        policy_number=getattr(patient, "policy_number", None),
+        status="draft",
+        expected_amount=_money(inv.amount),
+    )
+    db.session.add(claim)
+    return claim
+
+
+def _sync_missing_claims():
+    invoices = (
+        Invoice.query.options(joinedload(Invoice.patient))
+        .filter(func.lower(func.coalesce(Invoice.payer_type, "")) == "insurance")
+        .all()
+    )
+    created = 0
+    for inv in invoices:
+        if not getattr(inv, "insurance_claim", None):
+            ensure_claim_for_invoice(inv)
+            created += 1
+    if created:
+        db.session.commit()
+    return created
+
+
+def _paid_total(invoice_id):
+    total = Decimal("0.00")
+    for payment in Payment.query.filter_by(invoice_id=invoice_id).all():
+        total += _money(payment.amount)
+    return total
+
+
+def _advance_claim(claim, new_status):
+    now = eat_now()
+    claim.status = new_status
+    if new_status == "submitted_to_claims_officer":
+        claim.verified_by_id = getattr(current_user, "id", None)
+        claim.verified_at = claim.verified_at or now
+        claim.submitted_to_officer_at = now
+    elif new_status == "submitted_to_insurance":
+        claim.officer_id = getattr(current_user, "id", None)
+        claim.submitted_to_insurance_at = now
+    elif new_status == "paid":
+        claim.paid_at = now
+        claim.paid_amount = _money(request.form.get("paid_amount") or _paid_total(claim.invoice_id) or claim.expected_amount)
+        claim.insurer_reference = (request.form.get("insurer_reference") or claim.insurer_reference or "").strip()
+    elif new_status == "reconciled":
+        claim.reconciled_at = now
+        claim.reconciliation_notes = (request.form.get("reconciliation_notes") or claim.reconciliation_notes or "").strip()
+    elif new_status == "rejected":
+        claim.rejected_at = now
+        claim.rejection_reason = (request.form.get("rejection_reason") or claim.rejection_reason or "").strip()
+    elif new_status == "closed":
+        claim.closed_at = now
+    notes = (request.form.get("follow_up_notes") or "").strip()
+    if notes:
+        claim.follow_up_notes = notes
+
+
+@bp.get("/")
+@login_required
+@roles_required("claims_officer", "reception", "accountant", "admin")
+def dashboard():
+    _sync_missing_claims()
+    status_filter = (request.args.get("status") or "").strip()
+    q = InsuranceClaim.query.options(joinedload(InsuranceClaim.invoice), joinedload(InsuranceClaim.patient))
+    if status_filter in CLAIM_STATUSES:
+        q = q.filter(InsuranceClaim.status == status_filter)
+    claims = q.order_by(InsuranceClaim.updated_at.desc(), InsuranceClaim.id.desc()).all()
+    counts = Counter(claim.status for claim in InsuranceClaim.query.all())
+    totals = {
+        "expected": sum((_money(c.expected_amount) for c in claims), Decimal("0.00")),
+        "paid": sum((_money(c.paid_amount) for c in claims), Decimal("0.00")),
+    }
+    totals["outstanding"] = totals["expected"] - totals["paid"]
+    return render_template(
+        "claims_dashboard.html",
+        claims=claims,
+        statuses=CLAIM_STATUSES,
+        status_labels=CLAIM_STATUS_LABELS,
+        status_filter=status_filter,
+        counts=counts,
+        totals=totals,
+    )
+
+
+@bp.post("/invoices/<int:invoice_id>/verify")
+@login_required
+@roles_required("reception", "admin")
+def verify_invoice(invoice_id):
+    inv = Invoice.query.get_or_404(invoice_id)
+    claim = ensure_claim_for_invoice(inv)
+    if not claim:
+        flash("Only insurance invoices can be submitted to the claims officer.", "warning")
+        return redirect(url_for("billing.patient_billing", patient_id=inv.patient_id))
+    _advance_claim(claim, "submitted_to_claims_officer")
+    db.session.commit()
+    flash("Insurance verified and submitted to claims officer.", "success")
+    return redirect(url_for("billing.patient_billing", patient_id=inv.patient_id))
+
+
+@bp.post("/<int:claim_id>/status")
+@login_required
+@roles_required("claims_officer", "accountant", "admin")
+def update_status(claim_id):
+    claim = InsuranceClaim.query.get_or_404(claim_id)
+    new_status = (request.form.get("status") or "").strip()
+    if new_status not in CLAIM_STATUSES:
+        flash("Invalid claim status.", "danger")
+        return redirect(url_for("claims.dashboard"))
+    _advance_claim(claim, new_status)
+    db.session.commit()
+    flash(f"Claim updated to {CLAIM_STATUS_LABELS[new_status]}.", "success")
+    return redirect(url_for("claims.dashboard", status=request.args.get("status", "")))

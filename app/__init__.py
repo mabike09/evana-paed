@@ -105,7 +105,7 @@ def create_app():
     # -------------------------
     # Blueprints
     # -------------------------
-    from .routes import auth, home, patients, queue, billing, lab, files, inventory, reports, prices, pharmacy, finance, sms
+    from .routes import auth, home, patients, queue, billing, lab, files, inventory, reports, prices, pharmacy, finance, sms, claims
     app.register_blueprint(home.bp)
     app.register_blueprint(auth.bp)
     app.register_blueprint(patients.bp)
@@ -119,6 +119,7 @@ def create_app():
     app.register_blueprint(pharmacy.bp)
     app.register_blueprint(finance.bp)
     app.register_blueprint(sms.bp)
+    app.register_blueprint(claims.bp)
 
     # -------------------------
     # Invoice editability helper
@@ -176,6 +177,24 @@ def create_app():
         except Exception as e:
             app.logger.warning(f"Insurer seed skipped: {e}")
         app._insurers_seeded = True  # type: ignore[attr-defined]
+
+
+    @app.before_request
+    def _ensure_claims_table_once():
+        """Create the insurance claims table defensively when migrations lag behind."""
+        if getattr(app, "_claims_table_checked", False):
+            return
+        try:
+            insp = inspect(db.engine)
+            if not insp.has_table("insurance_claim"):
+                from .models import InsuranceClaim
+
+                InsuranceClaim.__table__.create(bind=db.engine, checkfirst=True)
+                app.logger.warning("Created missing insurance_claim table at runtime.")
+        except Exception as e:
+            app.logger.warning(f"Claims table check skipped: {e}")
+        finally:
+            app._claims_table_checked = True  # type: ignore[attr-defined]
 
     @app.before_request
     def _ensure_sms_tables_once():
