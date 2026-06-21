@@ -103,7 +103,7 @@ def _advance_claim(claim, new_status):
 
 @bp.get("/")
 @login_required
-@roles_required("claims_officer", "reception", "accountant", "admin")
+@roles_required("claims_officer", "claims_manager", "reception", "admin")
 def dashboard():
     _sync_missing_claims()
     status_filter = (request.args.get("status") or "").strip()
@@ -145,7 +145,7 @@ def verify_invoice(invoice_id):
 
 @bp.post("/<int:claim_id>/status")
 @login_required
-@roles_required("claims_officer", "accountant", "admin")
+@roles_required("claims_officer", "claims_manager", "admin")
 def update_status(claim_id):
     claim = InsuranceClaim.query.get_or_404(claim_id)
     new_status = (request.form.get("status") or "").strip()
