@@ -58,23 +58,35 @@
     <tbody>
       {% for claim in claims %}
       <tr>
-        <td><a href="{{ url_for('billing.patient_billing', patient_id=claim.patient_id) }}">{{ claim.invoice.number if claim.invoice else claim.invoice_id }}</a><br><small class="text-muted">{{ claim.invoice.issue_date if claim.invoice }}</small></td>
+        <td><a href="{{ url_for('billing.invoice_print', invoice_id=claim.invoice_id) }}">{{ claim.invoice.number if claim.invoice else claim.invoice_id }}</a><br><small class="text-muted">{{ claim.invoice.issue_date if claim.invoice }}</small></td>
         <td>{{ claim.patient.first_name }} {{ claim.patient.last_name }}<br><small class="text-muted">Policy: {{ claim.policy_number or '—' }}</small></td>
         <td>{{ claim.insurer_name }}<br><small class="text-muted">Ref: {{ claim.insurer_reference or '—' }}</small></td>
         <td><span class="badge text-bg-secondary">{{ claim.status_label }}</span></td>
         <td class="text-end">{{ "{:,.0f}".format(claim.expected_amount or 0) }}</td>
         <td class="text-end">{{ "{:,.0f}".format(claim.paid_amount or 0) }}{% if claim.paid_at %}<br><small class="text-muted">{{ claim.paid_at.strftime('%Y-%m-%d') }}</small>{% endif %}</td>
         <td style="min-width: 330px;">
-          <form method="post" action="{{ url_for('claims.update_status', claim_id=claim.id, status=status_filter, start_date=filters.start_date, end_date=filters.end_date, insurer=filters.insurer) }}" class="row g-1">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <div class="col-6"><select name="status" class="form-select form-select-sm">{% for st in statuses %}<option value="{{ st }}" {% if claim.status == st %}selected{% endif %}>{{ status_labels[st] }}</option>{% endfor %}</select></div>
-            <div class="col-6"><input name="paid_amount" class="form-control form-control-sm" placeholder="Paid amount"></div>
-            <div class="col-6"><div class="input-group input-group-sm"><span class="input-group-text">Paid date</span><input name="paid_date" class="form-control" type="date" value="{{ claim.paid_at.strftime('%Y-%m-%d') if claim.paid_at }}" aria-label="Payment date"></div></div>
-            <div class="col-6"><input name="insurer_reference" class="form-control form-control-sm" placeholder="Insurance ref"></div>
-            <div class="col-6"><input name="follow_up_notes" class="form-control form-control-sm" placeholder="Follow-up notes"></div>
-            <div class="col-12"><input name="reconciliation_notes" class="form-control form-control-sm" placeholder="Reconciliation / rejection notes"></div>
-            <div class="col-12"><button class="btn btn-sm btn-success">Update claim</button></div>
-          </form>
+          {% if current_user.role == 'reception' %}
+            {% if claim.status == 'draft' %}
+              <form method="post" action="{{ url_for('claims.update_status', claim_id=claim.id, status=status_filter, start_date=filters.start_date, end_date=filters.end_date, insurer=filters.insurer) }}" class="row g-1">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="status" value="submitted_to_claims_officer">
+                <div class="col-12"><button class="btn btn-sm btn-success">Submit to claims officer</button></div>
+              </form>
+            {% else %}
+              <span class="text-muted small">No receptionist action available.</span>
+            {% endif %}
+          {% else %}
+            <form method="post" action="{{ url_for('claims.update_status', claim_id=claim.id, status=status_filter, start_date=filters.start_date, end_date=filters.end_date, insurer=filters.insurer) }}" class="row g-1">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <div class="col-6"><select name="status" class="form-select form-select-sm">{% for st in statuses %}<option value="{{ st }}" {% if claim.status == st %}selected{% endif %}>{{ status_labels[st] }}</option>{% endfor %}</select></div>
+              <div class="col-6"><input name="paid_amount" class="form-control form-control-sm" placeholder="Paid amount"></div>
+              <div class="col-6"><div class="input-group input-group-sm"><span class="input-group-text">Paid date</span><input name="paid_date" class="form-control" type="date" value="{{ claim.paid_at.strftime('%Y-%m-%d') if claim.paid_at }}" aria-label="Payment date"></div></div>
+              <div class="col-6"><input name="insurer_reference" class="form-control form-control-sm" placeholder="Insurance ref"></div>
+              <div class="col-6"><input name="follow_up_notes" class="form-control form-control-sm" placeholder="Follow-up notes"></div>
+              <div class="col-12"><input name="reconciliation_notes" class="form-control form-control-sm" placeholder="Reconciliation / rejection notes"></div>
+              <div class="col-12"><button class="btn btn-sm btn-success">Update claim</button></div>
+            </form>
+          {% endif %}
         </td>
       </tr>
       {% else %}

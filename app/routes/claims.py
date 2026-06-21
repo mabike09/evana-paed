@@ -199,13 +199,26 @@ def verify_invoice(invoice_id):
 
 @bp.post("/<int:claim_id>/status")
 @login_required
-@roles_required("claims_officer", "claims_manager", "admin")
+@roles_required("claims_officer", "claims_manager", "reception", "admin")
 def update_status(claim_id):
     claim = InsuranceClaim.query.get_or_404(claim_id)
     new_status = (request.form.get("status") or "").strip()
     if new_status not in CLAIM_STATUSES:
         flash("Invalid claim status.", "danger")
         return redirect(url_for("claims.dashboard"))
+    if getattr(current_user, "role", None) == "reception" and (
+        claim.status != "draft" or new_status != "submitted_to_claims_officer"
+    ):
+        flash("Receptionists can only submit draft claims to the claims officer.", "danger")
+        return redirect(
+            url_for(
+                "claims.dashboard",
+                status=request.args.get("status", ""),
+                start_date=request.args.get("start_date", ""),
+                end_date=request.args.get("end_date", ""),
+                insurer=request.args.get("insurer", ""),
+            )
+        )
     _advance_claim(claim, new_status)
     db.session.commit()
     flash(f"Claim updated to {CLAIM_STATUS_LABELS[new_status]}.", "success")

@@ -1121,7 +1121,16 @@ def patient_billing(patient_id):
 # ========= Print Views =========
 @bp.get("/billing/invoice/<int:invoice_id>/print", endpoint="invoice_print")
 @login_required
-@roles_required("reception", "nurse", "doctor", "pediatrician", "accountant", "admin")
+@roles_required(
+    "reception",
+    "nurse",
+    "doctor",
+    "pediatrician",
+    "accountant",
+    "claims_officer",
+    "claims_manager",
+    "admin",
+)
 def invoice_print(invoice_id):
     inv = Invoice.query.get_or_404(invoice_id)
 
