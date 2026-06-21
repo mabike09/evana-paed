@@ -10,6 +10,7 @@ ROLES = [
     ("doctor","Doctor"),
     ("nurse","Nurse"),
     ("accountant","Accountant"),
+    ("claims_manager","Claims Manager"),
     ("claims_officer","Claims Officer"),
     ("branch_manager","Branch Manager"),
     ("reception","Receptionist"),
