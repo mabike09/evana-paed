@@ -30,6 +30,13 @@ def _is_insurance_invoice(inv):
     return bool(insurer and insurer != "cash")
 
 
+def _claim_insurer_name(patient):
+    insurer = (getattr(patient, "insurance_provider", None) or "").strip()
+    if not insurer or insurer.lower() == "cash":
+        return "Insurance"
+    return insurer
+
+
 def ensure_claim_for_invoice(inv):
     if not _is_insurance_invoice(inv):
         return None
@@ -42,7 +49,7 @@ def ensure_claim_for_invoice(inv):
     claim = InsuranceClaim(
         invoice_id=inv.id,
         patient_id=inv.patient_id,
-        insurer_name=(getattr(patient, "insurance_provider", None) or "Insurance").strip(),
+        insurer_name=_claim_insurer_name(patient),
         policy_number=getattr(patient, "policy_number", None),
         status="draft",
         expected_amount=_money(inv.amount),
@@ -114,7 +121,11 @@ def dashboard():
     insurer_choices = [
         row[0]
         for row in db.session.query(InsuranceClaim.insurer_name)
-        .filter(InsuranceClaim.insurer_name.isnot(None), InsuranceClaim.insurer_name != "")
+        .filter(
+            InsuranceClaim.insurer_name.isnot(None),
+            InsuranceClaim.insurer_name != "",
+            func.lower(InsuranceClaim.insurer_name) != "cash",
+        )
         .distinct()
         .order_by(InsuranceClaim.insurer_name.asc())
         .all()
