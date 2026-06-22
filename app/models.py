@@ -219,6 +219,7 @@ class User(db.Model, UserMixin):
     email = db.Column(db.String(150), unique=True, nullable=False)
     password_hash = db.Column(db.String(200), nullable=False)
     role = db.Column(db.String(30), nullable=False)  # admin, pediatrician, doctor, nurse, reception, labtech
+    is_active = db.Column(db.Boolean, nullable=False, default=True)
 
     def set_password(self, raw: str):
         self.password_hash = generate_password_hash(raw)

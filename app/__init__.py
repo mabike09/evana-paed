@@ -248,6 +248,28 @@ def create_app():
             app._billing_queue_closed_at_checked = True  # type: ignore[attr-defined]
 
     @app.before_request
+    def _ensure_user_is_active_once():
+        """Backfill user.is_active defensively when migrations have not run yet."""
+        if getattr(app, "_user_is_active_checked", False):
+            return
+
+        try:
+            insp = inspect(db.engine)
+            if not insp.has_table("user"):
+                return
+
+            col_names = {c.get("name") for c in insp.get_columns("user")}
+            if "is_active" not in col_names:
+                db.session.execute(text("ALTER TABLE user ADD COLUMN is_active BOOLEAN NOT NULL DEFAULT 1"))
+                db.session.commit()
+                app.logger.warning("Added missing user.is_active column at runtime.")
+        except Exception as e:
+            db.session.rollback()
+            app.logger.warning(f"user.is_active schema check skipped: {e}")
+        finally:
+            app._user_is_active_checked = True  # type: ignore[attr-defined]
+
+    @app.before_request
     def _ensure_expense_tracker_tables_once():
         """
         Create expense tracker tables defensively if migrations are not yet applied.

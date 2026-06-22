@@ -5,11 +5,45 @@
   <h1 class="h4 mb-0">Users</h1>
   <a class="btn btn-sm btn-success ms-3" href="{{ url_for('auth.users_new') }}">New User</a>
 </div>
-<table class="table table-sm">
-  <thead><tr><th>ID</th><th>Username</th><th>Email</th><th>Role</th></tr></thead>
+<table class="table table-sm align-middle">
+  <thead>
+    <tr><th>ID</th><th>Username</th><th>Email</th><th>Role</th><th>Status</th><th class="text-end">Actions</th></tr>
+  </thead>
   <tbody>
     {% for u in users %}
-      <tr><td>{{ u.id }}</td><td>{{ u.username }}</td><td>{{ u.email }}</td><td>{{ u.role }}</td></tr>
+      <tr>
+        <td>{{ u.id }}</td>
+        <td>{{ u.username }}</td>
+        <td>{{ u.email }}</td>
+        <td>{{ u.role }}</td>
+        <td>
+          {% if u.is_active %}
+            <span class="badge text-bg-success">Active</span>
+          {% else %}
+            <span class="badge text-bg-secondary">Inactive</span>
+          {% endif %}
+        </td>
+        <td class="text-end">
+          <div class="d-inline-flex gap-1">
+            <a class="btn btn-sm btn-outline-primary" href="{{ url_for('auth.users_edit', user_id=u.id) }}">Edit</a>
+            {% if u.is_active %}
+              <form method="POST" action="{{ url_for('auth.users_deactivate', user_id=u.id) }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button class="btn btn-sm btn-outline-warning" type="submit" {% if u.id == current_user.id %}disabled{% endif %}>Deactivate</button>
+              </form>
+            {% else %}
+              <form method="POST" action="{{ url_for('auth.users_activate', user_id=u.id) }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button class="btn btn-sm btn-outline-success" type="submit">Activate</button>
+              </form>
+            {% endif %}
+            <form method="POST" action="{{ url_for('auth.users_delete', user_id=u.id) }}" onsubmit="return confirm('Delete this user? This cannot be undone.');">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button class="btn btn-sm btn-outline-danger" type="submit" {% if u.id == current_user.id %}disabled{% endif %}>Delete</button>
+            </form>
+          </div>
+        </td>
+      </tr>
     {% endfor %}
   </tbody>
 </table>
