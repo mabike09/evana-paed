@@ -14,6 +14,10 @@
     {% if current_user.role in ['admin'] %}
       <a class="btn btn-sm btn-outline-primary ms-2" href="{{ url_for('inventory.inventory_bulk_txn') }}">Bulk Record Txn</a>
     {% endif %}
+    <div class="btn-group btn-group-sm ms-2" role="group" aria-label="Stocktaking downloads">
+      <a class="btn btn-outline-secondary" href="{{ url_for('inventory.inventory_stocktaking_export', format='pdf', q=q) }}">Stocktaking PDF</a>
+      <a class="btn btn-outline-secondary" href="{{ url_for('inventory.inventory_stocktaking_export', format='excel', q=q) }}">Stocktaking Excel</a>
+    </div>
   </div>
 
   <form class="d-flex" method="get" action="{{ url_for('inventory.inventory_stock') }}">
