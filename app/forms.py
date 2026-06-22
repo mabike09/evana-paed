@@ -48,6 +48,16 @@ class UserForm(FlaskForm):
     submit = SubmitField("Create User")
 
 
+class UserEditForm(FlaskForm):
+    username = StringField("Username", validators=[DataRequired(), Length(max=150)])
+    email = StringField("Email", validators=[DataRequired(), Email(), Length(max=150)])
+    role = SelectField("Role", choices=ROLES, validators=[DataRequired()])
+    is_active = BooleanField("Active")
+    password = PasswordField("New Password", validators=[Optional(), Length(min=6, max=200)])
+    confirm = PasswordField("Confirm New Password", validators=[EqualTo("password")])
+    submit = SubmitField("Save User")
+
+
 
 
 INSURANCE_CHOICES = [
