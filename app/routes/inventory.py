@@ -1,7 +1,9 @@
 # app/routes/inventory.py
 from decimal import Decimal
 from collections import defaultdict
-from flask import Blueprint, render_template, request, redirect, url_for, flash
+from datetime import datetime
+from io import BytesIO
+from flask import Blueprint, render_template, request, redirect, url_for, flash, Response, send_file
 from flask_login import login_required, current_user
 from sqlalchemy import func, or_, and_
 from ..permissions import roles_required
@@ -11,6 +13,20 @@ from ..models import (
     Item, ItemTxn, DispenseTxn, Visit, Invoice, InvoiceLine, Patient,
     PriceBook, PriceItem, Payer
 )
+
+
+def _stocktaking_items(q=None):
+    """Return drug inventory rows used by printable stocktaking exports."""
+    query = Item.query.filter_by(is_drug=True)
+    if q:
+        like = f"%{q}%"
+        query = query.filter(or_(Item.name.ilike(like), Item.sku.ilike(like)))
+    return query.order_by(Item.name.asc()).all()
+
+
+def _stocktaking_filename(extension):
+    stamp = datetime.utcnow().strftime("%Y%m%d_%H%M")
+    return f"evana_paed_stocktaking_{stamp}.{extension}"
 
 bp = Blueprint("inventory", __name__)
 
@@ -303,6 +319,128 @@ def inventory_stock():
         q=q
     )
 
+
+
+@bp.route("/inventory/stocktaking/export")
+@login_required
+@roles_required("admin", "nurse")
+def inventory_stocktaking_export():
+    """Download a printable stocktaking form for pharmacy drug counts."""
+    export_format = (request.args.get("format") or "pdf").strip().lower()
+    q = (request.args.get("q") or "").strip()
+    items = _stocktaking_items(q=q)
+
+    if export_format in {"excel", "xlsx"}:
+        from openpyxl import Workbook
+        from openpyxl.styles import Alignment, Font, PatternFill
+        from openpyxl.utils import get_column_letter
+
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Stocktaking"
+        ws.append(["Evana Paed Pharmacy Stocktaking Form"])
+        ws.append([f"Generated: {datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')}"])
+        ws.append([])
+        headers = [
+            "No.",
+            "Drug Name",
+            "SKU",
+            "Unit",
+            "Quantity in Evana-Paed System",
+            "Actual Quantity in Pharmacy Stock",
+            "Variance",
+            "Remarks",
+        ]
+        ws.append(headers)
+        header_row = ws.max_row
+        for cell in ws[header_row]:
+            cell.font = Font(bold=True, color="FFFFFF")
+            cell.fill = PatternFill("solid", fgColor="4F81BD")
+            cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+
+        for idx, item in enumerate(items, start=1):
+            row_num = ws.max_row + 1
+            ws.append([
+                idx,
+                item.name,
+                item.sku or "",
+                item.unit or "",
+                int(item.current_qty or 0),
+                "",
+                f"=F{row_num}-E{row_num}",
+                "",
+            ])
+
+        widths = [8, 34, 16, 12, 24, 28, 14, 24]
+        for idx, width in enumerate(widths, start=1):
+            ws.column_dimensions[get_column_letter(idx)].width = width
+        ws.freeze_panes = "A5"
+
+        output = BytesIO()
+        wb.save(output)
+        output.seek(0)
+        return send_file(
+            output,
+            as_attachment=True,
+            download_name=_stocktaking_filename("xlsx"),
+            mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+
+    if export_format != "pdf":
+        flash("Unsupported stocktaking export format.", "warning")
+        return redirect(url_for("inventory.inventory_stock", mode="inventory", q=q))
+
+    try:
+        from reportlab.lib import colors
+        from reportlab.lib.pagesizes import A4, landscape
+        from reportlab.lib.styles import getSampleStyleSheet
+        from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+    except Exception:
+        html_rows = "".join(
+            f"<tr><td>{idx}</td><td>{item.name}</td><td>{item.sku or ''}</td><td>{item.unit or ''}</td>"
+            f"<td>{int(item.current_qty or 0)}</td><td></td><td></td><td></td></tr>"
+            for idx, item in enumerate(items, start=1)
+        )
+        html = f"""
+        <h1>Evana Paed Pharmacy Stocktaking Form</h1>
+        <p>Generated: {datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')}</p>
+        <table border="1" cellspacing="0" cellpadding="4">
+          <thead><tr><th>No.</th><th>Drug Name</th><th>SKU</th><th>Unit</th><th>Quantity in Evana-Paed System</th><th>Actual Quantity in Pharmacy Stock</th><th>Variance</th><th>Remarks</th></tr></thead>
+          <tbody>{html_rows}</tbody>
+        </table>
+        """
+        return Response(html, mimetype="text/html")
+
+    output = BytesIO()
+    doc = SimpleDocTemplate(output, pagesize=landscape(A4), rightMargin=24, leftMargin=24, topMargin=24, bottomMargin=24)
+    styles = getSampleStyleSheet()
+    elements = [
+        Paragraph("Evana Paed Pharmacy Stocktaking Form", styles["Title"]),
+        Paragraph(f"Generated: {datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')}", styles["Normal"]),
+        Spacer(1, 12),
+    ]
+    data = [["No.", "Drug Name", "SKU", "Unit", "Quantity in Evana-Paed System", "Actual Quantity in Pharmacy Stock", "Variance", "Remarks"]]
+    for idx, item in enumerate(items, start=1):
+        data.append([idx, item.name, item.sku or "", item.unit or "", int(item.current_qty or 0), "", "", ""])
+    table = Table(data, repeatRows=1, colWidths=[32, 170, 70, 55, 105, 125, 65, 100])
+    table.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#4F81BD")),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("ALIGN", (0, 0), (-1, 0), "CENTER"),
+        ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("FONTSIZE", (0, 0), (-1, -1), 8),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#F7F7F7")]),
+    ]))
+    elements.append(table)
+    doc.build(elements)
+    output.seek(0)
+    return Response(
+        output.getvalue(),
+        mimetype="application/pdf",
+        headers={"Content-Disposition": f"attachment; filename={_stocktaking_filename('pdf')}"},
+    )
 
 # ---------------------------
 # Stock transaction
