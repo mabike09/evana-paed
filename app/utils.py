@@ -70,6 +70,12 @@ _ROLE_LANDING_MAP = {
     "pediatrician": "patients.doctors_queue",
     "accountant": "finance.petty_cash_ledger",
     "branch_manager": "finance.petty_cash_ledger",
+
+    # Claims team members go straight to the claims dashboard
+    "claims_manager": "claims.dashboard",
+    "claims manager": "claims.dashboard",
+    "claims_officer": "claims.dashboard",
+    "claims officer": "claims.dashboard",
 }
 
 _DEFAULT_LANDING = "patients.patients_list"
