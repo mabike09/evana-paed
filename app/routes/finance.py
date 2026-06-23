@@ -189,6 +189,17 @@ def _ap_bill_balance(bill: APBill) -> Decimal:
     return _money(_money(bill.invoice_total) - _ap_bill_paid_total(bill))
 
 
+def _ap_supplier_invoice_total(supplier: APSupplier) -> Decimal:
+    return _money(sum((_money(bill.invoice_total) for bill in supplier.bills), Decimal("0.00")))
+
+
+def _ap_supplier_paid_total(supplier: APSupplier) -> Decimal:
+    return _money(sum((_ap_bill_paid_total(bill) for bill in supplier.bills), Decimal("0.00")))
+
+
+def _ap_supplier_balance(supplier: APSupplier) -> Decimal:
+    return _money(_money(supplier.opening_balance) + _ap_supplier_invoice_total(supplier) - _ap_supplier_paid_total(supplier))
+
 def _ap_bill_bucket(bill: APBill, today: date) -> str:
     balance = _ap_bill_balance(bill)
     if balance <= 0:
@@ -739,6 +750,9 @@ def accounts_payable():
         ap_bill_balance=_ap_bill_balance,
         ap_bill_paid_total=_ap_bill_paid_total,
         ap_bill_bucket=_ap_bill_bucket,
+        ap_supplier_invoice_total=_ap_supplier_invoice_total,
+        ap_supplier_paid_total=_ap_supplier_paid_total,
+        ap_supplier_balance=_ap_supplier_balance,
         aging=aging,
         supplier_totals=sorted(supplier_totals.items(), key=lambda x: x[0].lower()),
         category_totals=sorted(category_totals.items(), key=lambda x: x[0].lower()),
@@ -749,6 +763,114 @@ def accounts_payable():
         duplicate_refs=duplicate_refs,
         monthly_payments=monthly_payments,
         total_outstanding=sum(aging.values(), Decimal("0.00")),
+        is_admin=_user_role() == "admin",
+    )
+
+
+@bp.route("/finance/accounts-payable/suppliers/<int:supplier_id>", methods=["GET", "POST"])
+@login_required
+@roles_required("accountant", "admin")
+def ap_supplier_detail(supplier_id: int):
+    supplier = APSupplier.query.get_or_404(supplier_id)
+    today = eat_today()
+
+    if request.method == "POST":
+        if _user_role() != "admin":
+            flash("Only administrators can edit supplier information.", "warning")
+            return redirect(url_for("finance.ap_supplier_detail", supplier_id=supplier.id))
+
+        before = {
+            "supplier_name": supplier.supplier_name,
+            "contact_person": supplier.contact_person,
+            "phone_number": supplier.phone_number,
+            "email": supplier.email,
+            "category": supplier.category,
+            "payment_terms": supplier.payment_terms,
+            "opening_balance": str(supplier.opening_balance),
+            "is_active": supplier.is_active,
+        }
+        supplier.supplier_name = (request.form.get("supplier_name") or "").strip()
+        supplier.contact_person = (request.form.get("contact_person") or "").strip()
+        supplier.phone_number = (request.form.get("phone_number") or "").strip()
+        supplier.email = (request.form.get("email") or "").strip()
+        supplier.physical_address = (request.form.get("physical_address") or "").strip()
+        supplier.category = (request.form.get("category") or "").strip()
+        supplier.payment_terms = (request.form.get("payment_terms") or "30 days").strip()
+        supplier.payment_details = (request.form.get("payment_details") or "").strip()
+        supplier.tax_details = (request.form.get("tax_details") or "").strip()
+        supplier.opening_balance = _money(request.form.get("opening_balance") or 0)
+        supplier.is_active = request.form.get("is_active") == "on"
+
+        if not supplier.supplier_name:
+            flash("Supplier name is required.", "warning")
+            return redirect(url_for("finance.ap_supplier_detail", supplier_id=supplier.id))
+
+        _ap_log("edit", "supplier", supplier.id, {"before": before, "after": {"supplier_name": supplier.supplier_name}})
+        try:
+            db.session.commit()
+        except IntegrityError:
+            db.session.rollback()
+            flash("Supplier could not be updated because that supplier name already exists.", "warning")
+            return redirect(url_for("finance.ap_supplier_detail", supplier_id=supplier.id))
+        flash("Supplier information updated.", "success")
+        return redirect(url_for("finance.ap_supplier_detail", supplier_id=supplier.id))
+
+    bills = APBill.query.filter_by(supplier_id=supplier.id).order_by(APBill.invoice_date.desc(), APBill.id.desc()).all()
+    payments = (
+        APPayment.query.join(APBill)
+        .filter(APBill.supplier_id == supplier.id)
+        .order_by(APPayment.payment_date.desc(), APPayment.id.desc())
+        .all()
+    )
+
+    statement_entries = []
+    if _money(supplier.opening_balance):
+        statement_entries.append({
+            "date": "Opening",
+            "type": "Opening balance",
+            "reference": "Supplier opening balance",
+            "debit": _money(supplier.opening_balance),
+            "credit": Decimal("0.00"),
+        })
+    for bill in bills:
+        statement_entries.append({
+            "date": bill.invoice_date,
+            "type": "Invoice",
+            "reference": bill.invoice_number,
+            "description": bill.description,
+            "debit": _money(bill.invoice_total),
+            "credit": Decimal("0.00"),
+        })
+        for payment in bill.payments:
+            statement_entries.append({
+                "date": payment.payment_date,
+                "type": "Payment",
+                "reference": payment.reference_number or bill.invoice_number,
+                "description": f"{payment.method.title()} payment for {bill.invoice_number}",
+                "debit": Decimal("0.00"),
+                "credit": _money(payment.amount),
+            })
+    statement_entries.sort(key=lambda entry: "0000-00-00" if entry["date"] == "Opening" else entry["date"])
+    running_balance = Decimal("0.00")
+    for entry in statement_entries:
+        running_balance = _money(running_balance + entry["debit"] - entry["credit"])
+        entry["balance"] = running_balance
+
+    return render_template(
+        "finance_ap_supplier_detail.html",
+        supplier=supplier,
+        bills=bills,
+        payments=payments,
+        statement_entries=statement_entries,
+        supplier_categories=AP_SUPPLIER_CATEGORIES,
+        payment_terms=AP_PAYMENT_TERMS,
+        ap_bill_balance=_ap_bill_balance,
+        ap_bill_paid_total=_ap_bill_paid_total,
+        ap_bill_bucket=_ap_bill_bucket,
+        ap_supplier_invoice_total=_ap_supplier_invoice_total,
+        ap_supplier_paid_total=_ap_supplier_paid_total,
+        ap_supplier_balance=_ap_supplier_balance,
+        today=today,
         is_admin=_user_role() == "admin",
     )
 
