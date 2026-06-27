@@ -37,18 +37,33 @@ from ..timezone import eat_now, eat_today
 bp = Blueprint("finance", __name__)
 
 ALLOWED_ATTACHMENT_EXTENSIONS = {"pdf", "png", "jpg", "jpeg", "gif", "doc", "docx", "xls", "xlsx"}
-PETTY_CASH_CATEGORIES = [
-    "transport",
+DEFAULT_EXPENSE_CATEGORIES = [
+    "drug supplies",
+    "laboratory supplies",
+    "staff welfare",
+    "utilities",
+    "rent",
+    "repairs and maintenance",
+    "fuel and transport",
+    "cleaning supplies",
+    "marketing",
+    "professional fees",
+    "equipment purchase",
+    "equipment servicing",
+    "petty cash",
+    "referral commission",
+    "stationary",
     "office supplies",
+    "transport",
     "cleaning materials",
     "airtime/data",
-    "staff welfare",
     "minor repairs",
     "fuel",
     "miscellaneous",
     "dentist retainer",
     "dental consumables",
 ]
+PETTY_CASH_CATEGORIES = DEFAULT_EXPENSE_CATEGORIES
 PETTY_CASH_TXN_TYPES = ["cash_in", "cash_out"]
 ENTRY_ROLES = {"reception", "receptionist", "nurse", "branch_manager", "branch manager", "admin", "accountant"}
 FINANCE_MANAGER_ROLES = {"admin", "accountant"}
@@ -66,24 +81,7 @@ AP_SUPPLIER_CATEGORIES = [
 ]
 AP_PAYMENT_TERMS = ["7 days", "14 days", "30 days", "cash on delivery"]
 AP_PAYMENT_METHODS = ["cash", "bank transfer", "mobile money", "cheque", "eft"]
-AP_EXPENSE_CATEGORIES = [
-    "drug supplies",
-    "laboratory supplies",
-    "staff welfare",
-    "utilities",
-    "rent",
-    "repairs and maintenance",
-    "fuel and transport",
-    "cleaning supplies",
-    "marketing",
-    "professional fees",
-    "equipment purchase",
-    "equipment servicing",
-    "petty cash",
-    "referral commission",
-    "stationary",
-    "office supplies",
-]
+AP_EXPENSE_CATEGORIES = DEFAULT_EXPENSE_CATEGORIES
 AP_ATTACHMENT_TYPES = [
     "supplier invoice",
     "delivery note",
@@ -99,6 +97,45 @@ AP_ATTACHMENT_TYPES = [
 
 def _money(value: Decimal | int | float | str | None) -> Decimal:
     return Decimal(str(value or 0)).quantize(Decimal("0.01"))
+
+
+def _sync_default_expense_categories() -> None:
+    """Ensure the database-backed expense tracker has the shared category list."""
+    existing = {
+        category.name.strip().lower(): category
+        for category in ExpenseCategory.query.all()
+        if category.name
+    }
+    changed = False
+    for name in DEFAULT_EXPENSE_CATEGORIES:
+        key = name.lower()
+        category = existing.get(key)
+        if category:
+            if not category.is_active:
+                category.is_active = True
+                changed = True
+            continue
+        db.session.add(
+            ExpenseCategory(
+                name=name,
+                created_by="system",
+                is_active=True,
+            )
+        )
+        changed = True
+    if changed:
+        db.session.commit()
+
+
+def _expense_category_names() -> list[str]:
+    """Return the active category names used by petty cash, AP, and tracker."""
+    _sync_default_expense_categories()
+    categories = (
+        ExpenseCategory.query.filter_by(is_active=True)
+        .order_by(ExpenseCategory.name.asc())
+        .all()
+    )
+    return [category.name for category in categories]
 
 
 def _user_role() -> str:
@@ -490,6 +527,7 @@ def expense_tracker():
     if end_date:
         query = query.filter(ExpenseEntry.expense_date <= end_date)
 
+    _sync_default_expense_categories()
     categories = ExpenseCategory.query.filter_by(is_active=True).order_by(ExpenseCategory.name.asc()).all()
     expenses = query.all()
     return render_template(
@@ -746,7 +784,7 @@ def accounts_payable():
         payment_terms=AP_PAYMENT_TERMS,
         attachment_types=AP_ATTACHMENT_TYPES,
         payment_methods=AP_PAYMENT_METHODS,
-        expense_categories=AP_EXPENSE_CATEGORIES,
+        expense_categories=_expense_category_names(),
         ap_bill_balance=_ap_bill_balance,
         ap_bill_paid_total=_ap_bill_paid_total,
         ap_bill_bucket=_ap_bill_bucket,
@@ -1194,7 +1232,7 @@ def petty_cash_ledger():
         filtered_balance=filtered_balance,
         opening_balance=opening_balance,
         metrics=metrics,
-        categories=PETTY_CASH_CATEGORIES,
+        categories=_expense_category_names(),
         transaction_types=PETTY_CASH_TXN_TYPES,
         can_manage_finance=_can_manage_finance(),
         can_manage_petty_cash=_can_manage_petty_cash(),
