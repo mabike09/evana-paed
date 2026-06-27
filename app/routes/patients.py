@@ -4,7 +4,7 @@ from datetime import datetime
 
 from flask import Blueprint, render_template, request, redirect, url_for, flash, current_app, jsonify
 from flask_login import login_required, current_user
-from sqlalchemy import or_, cast
+from sqlalchemy import or_, cast, func
 from sqlalchemy.types import String
 from sqlalchemy.orm import load_only
 
@@ -83,7 +83,6 @@ except Exception:
 # ---------------------------
 # API: lookup / autocomplete
 # ---------------------------
-from sqlalchemy import func
 
 # Ensure required models exist in this module scope
 try:
@@ -1363,6 +1362,44 @@ def visit_reprice_invoice(visit_id):
 
 
 # ---------- Registration / Edit / Detail ----------
+def _normalized_patient_form_data(form):
+    """Return normalized values used to create and de-duplicate a patient."""
+    return {
+        "first_name": (form.first_name.data or "").strip(),
+        "last_name": (form.last_name.data or "").strip(),
+        "sex": form.sex.data or None,
+        "date_of_birth": (
+            form.date_of_birth.data.strftime("%Y-%m-%d")
+            if form.date_of_birth.data else None
+        ),
+        "phone": (form.phone.data or "").strip(),
+        "email": ((form.email.data or "").strip() or None),
+        "address": ((form.address.data or "").strip() or None),
+        "next_of_kin": ((form.next_of_kin.data or "").strip() or None),
+        "insurance_provider": ((form.insurance_provider.data or "").strip() or None),
+        "policy_number": ((form.policy_number.data or "").strip() or None),
+        "allergies": ((form.allergies.data or "").strip() or None),
+        "medical_history": ((form.medical_history.data or "").strip() or None),
+        "consent": bool(form.consent.data),
+    }
+
+
+def _find_duplicate_patient(first_name, last_name, phone, date_of_birth=None, exclude_patient_id=None):
+    """Find an existing patient matching the identifying registration fields."""
+    query = Patient.query.filter(
+        func.lower(func.trim(Patient.first_name)) == first_name.strip().lower(),
+        func.lower(func.trim(Patient.last_name)) == last_name.strip().lower(),
+        func.trim(Patient.phone) == phone.strip(),
+    )
+    if date_of_birth:
+        query = query.filter(Patient.date_of_birth == date_of_birth)
+    else:
+        query = query.filter(or_(Patient.date_of_birth.is_(None), Patient.date_of_birth == ""))
+    if exclude_patient_id:
+        query = query.filter(Patient.id != exclude_patient_id)
+    return query.order_by(Patient.id.asc()).first()
+
+
 @bp.route("/patients/new", methods=["GET", "POST"])
 @login_required
 @roles_required("reception", "nurse", "admin")
@@ -1375,24 +1412,23 @@ def patients_new():
         .all()
     )
     if form.validate_on_submit():
-        p = Patient(
-            first_name=(form.first_name.data or "").strip(),
-            last_name=(form.last_name.data or "").strip(),
-            sex=form.sex.data or None,
-            date_of_birth=(
-                form.date_of_birth.data.strftime("%Y-%m-%d")
-                if form.date_of_birth.data else None
-            ),
-            phone=(form.phone.data or "").strip(),
-            email=((form.email.data or "").strip() or None),
-            address=((form.address.data or "").strip() or None),
-            next_of_kin=((form.next_of_kin.data or "").strip() or None),
-            insurance_provider=((form.insurance_provider.data or "").strip() or None),
-            policy_number=((form.policy_number.data or "").strip() or None),
-            allergies=((form.allergies.data or "").strip() or None),
-            medical_history=((form.medical_history.data or "").strip() or None),
-            consent=bool(form.consent.data),
+        patient_data = _normalized_patient_form_data(form)
+        duplicate = _find_duplicate_patient(
+            patient_data["first_name"],
+            patient_data["last_name"],
+            patient_data["phone"],
+            patient_data["date_of_birth"],
         )
+        if duplicate:
+            flash(
+                "Duplicate patient registration blocked. "
+                f"{duplicate.first_name} {duplicate.last_name} is already registered "
+                f"as {duplicate.patient_code or 'an existing patient record'}.",
+                "danger",
+            )
+            return redirect(url_for("patients.patient_detail", patient_id=duplicate.id))
+
+        p = Patient(**patient_data)
         db.session.add(p)
         db.session.flush()
         p.patient_code = generate_patient_code()
