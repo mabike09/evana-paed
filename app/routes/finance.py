@@ -21,11 +21,11 @@ from ..models import (
     APBill,
     APBillLine,
     APPayment,
-    Payment,
     APRecurringTemplate,
     APSupplier,
     ExpenseCategory,
     ExpenseEntry,
+    Invoice,
     PettyCashAuditLog,
     PettyCashPeriodLock,
     PettyCashReconciliation,
@@ -82,6 +82,14 @@ AP_SUPPLIER_CATEGORIES = [
 AP_PAYMENT_TERMS = ["7 days", "14 days", "30 days", "cash on delivery"]
 AP_PAYMENT_METHODS = ["cash", "bank transfer", "mobile money", "cheque", "eft"]
 AP_EXPENSE_CATEGORIES = DEFAULT_EXPENSE_CATEGORIES
+COST_OF_SERVICE_CATEGORIES = {
+    "drug supplies",
+    "drugs and medical supplies",
+    "drugs",
+    "laboratory supplies",
+    "lab supplies",
+}
+
 AP_ATTACHMENT_TYPES = [
     "supplier invoice",
     "delivery note",
@@ -1000,16 +1008,16 @@ def income_statement():
     start_raw = str(start_date)
     end_raw = str(end_date)
 
-    cash_revenue = _money(db.session.query(func.coalesce(func.sum(Payment.amount), 0)).filter(
-        Payment.payment_date >= start_raw,
-        Payment.payment_date <= end_raw,
-        Payment.method == "cash",
+    cash_revenue = _money(db.session.query(func.coalesce(func.sum(Invoice.amount), 0)).filter(
+        Invoice.issue_date >= start_raw,
+        Invoice.issue_date <= end_raw,
+        Invoice.payer_type == "Cash",
     ).scalar())
 
-    insurance_revenue = _money(db.session.query(func.coalesce(func.sum(Payment.amount), 0)).filter(
-        Payment.payment_date >= start_raw,
-        Payment.payment_date <= end_raw,
-        Payment.method == "insurance",
+    insurance_revenue = _money(db.session.query(func.coalesce(func.sum(Invoice.amount), 0)).filter(
+        Invoice.issue_date >= start_raw,
+        Invoice.issue_date <= end_raw,
+        Invoice.payer_type == "Insurance",
     ).scalar())
 
     drug_cost = _money(db.session.query(func.coalesce(func.sum(APBillLine.amount), 0)).join(APBill).filter(
@@ -1024,15 +1032,33 @@ def income_statement():
         func.lower(APBillLine.expense_category).in_(["laboratory supplies", "lab supplies"]),
     ).scalar())
 
-    expense_rows = db.session.query(
+    operating_expense_totals = defaultdict(lambda: Decimal("0.00"))
+
+    tracker_expense_rows = db.session.query(
         ExpenseCategory.name,
         func.coalesce(func.sum(ExpenseEntry.amount), 0),
     ).join(ExpenseEntry, ExpenseEntry.category_id == ExpenseCategory.id).filter(
         ExpenseEntry.expense_date >= start_raw,
         ExpenseEntry.expense_date <= end_raw,
-    ).group_by(ExpenseCategory.name).order_by(ExpenseCategory.name.asc()).all()
+    ).group_by(ExpenseCategory.name).all()
+    for name, total in tracker_expense_rows:
+        operating_expense_totals[name or "Uncategorized"] += _money(total)
 
-    operating_expenses = [{"name": name, "amount": _money(total)} for name, total in expense_rows]
+    ap_operating_expense_rows = db.session.query(
+        APBillLine.expense_category,
+        func.coalesce(func.sum(APBillLine.amount), 0),
+    ).join(APBill).filter(
+        APBill.invoice_date >= start_raw,
+        APBill.invoice_date <= end_raw,
+        ~func.lower(APBillLine.expense_category).in_(COST_OF_SERVICE_CATEGORIES),
+    ).group_by(APBillLine.expense_category).all()
+    for name, total in ap_operating_expense_rows:
+        operating_expense_totals[name or "Uncategorized"] += _money(total)
+
+    operating_expenses = [
+        {"name": name, "amount": amount}
+        for name, amount in sorted(operating_expense_totals.items(), key=lambda row: row[0].lower())
+    ]
     total_operating_expenses = _money(sum((row["amount"] for row in operating_expenses), Decimal("0.00")))
 
     total_revenue = _money(cash_revenue + insurance_revenue)
