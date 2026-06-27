@@ -21,11 +21,11 @@ from ..models import (
     APBill,
     APBillLine,
     APPayment,
-    Payment,
     APRecurringTemplate,
     APSupplier,
     ExpenseCategory,
     ExpenseEntry,
+    Invoice,
     PettyCashAuditLog,
     PettyCashPeriodLock,
     PettyCashReconciliation,
@@ -1008,16 +1008,16 @@ def income_statement():
     start_raw = str(start_date)
     end_raw = str(end_date)
 
-    cash_revenue = _money(db.session.query(func.coalesce(func.sum(Payment.amount), 0)).filter(
-        Payment.payment_date >= start_raw,
-        Payment.payment_date <= end_raw,
-        Payment.method == "cash",
+    cash_revenue = _money(db.session.query(func.coalesce(func.sum(Invoice.amount), 0)).filter(
+        Invoice.issue_date >= start_raw,
+        Invoice.issue_date <= end_raw,
+        Invoice.payer_type == "Cash",
     ).scalar())
 
-    insurance_revenue = _money(db.session.query(func.coalesce(func.sum(Payment.amount), 0)).filter(
-        Payment.payment_date >= start_raw,
-        Payment.payment_date <= end_raw,
-        Payment.method == "insurance",
+    insurance_revenue = _money(db.session.query(func.coalesce(func.sum(Invoice.amount), 0)).filter(
+        Invoice.issue_date >= start_raw,
+        Invoice.issue_date <= end_raw,
+        Invoice.payer_type == "Insurance",
     ).scalar())
 
     drug_cost = _money(db.session.query(func.coalesce(func.sum(APBillLine.amount), 0)).join(APBill).filter(
