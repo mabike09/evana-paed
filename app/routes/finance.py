@@ -1379,6 +1379,34 @@ def _parse_decimal_field(name: str) -> Decimal:
     return _money((request.form.get(name) or "0").replace(",", ""))
 
 
+def _asset_category_code(category: str | None) -> str:
+    words = ["".join(ch for ch in word if ch.isalnum()) for word in (category or "Asset").replace("/", " ").split()]
+    words = [word.upper() for word in words if word]
+    if not words:
+        return "AST"
+    if len(words) == 1:
+        return words[0][:3].ljust(3, "X")
+    return "".join(word[0] for word in words)[:4]
+
+
+def _generate_asset_id(category: str | None, purchase_date: str | None = None) -> str:
+    year_source = (purchase_date or "")[:4]
+    year = year_source if year_source.isdigit() else str(eat_today().year)
+    prefix = f"{_asset_category_code(category)}-{year}"
+    existing_ids = (
+        db.session.query(AssetRegisterAsset.asset_id)
+        .filter(AssetRegisterAsset.asset_id.like(f"{prefix}-%"))
+        .all()
+    )
+    max_sequence = 0
+    for (asset_id,) in existing_ids:
+        try:
+            max_sequence = max(max_sequence, int((asset_id or "").rsplit("-", 1)[1]))
+        except (IndexError, ValueError):
+            continue
+    return f"{prefix}-{max_sequence + 1:04d}"
+
+
 def _asset_nbv(asset: AssetRegisterAsset) -> Decimal:
     return max(_money(asset.purchase_cost) - _money(asset.accumulated_depreciation), Decimal("0.00"))
 
@@ -1417,7 +1445,7 @@ def asset_register():
         action = request.form.get("action")
         if action == "add_asset":
             asset = AssetRegisterAsset(
-                asset_id=request.form.get("asset_id") or f"BAMBI-ASSET-{int(datetime.utcnow().timestamp())}",
+                asset_id=_generate_asset_id(request.form.get("category") or ASSET_CATEGORIES[0], request.form.get("purchase_date")),
                 asset_name=request.form.get("asset_name") or "Unnamed asset",
                 category=request.form.get("category") or ASSET_CATEGORIES[0],
                 department_room=request.form.get("department_room"),
