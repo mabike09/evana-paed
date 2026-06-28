@@ -23,6 +23,9 @@ from ..models import (
     APPayment,
     APRecurringTemplate,
     APSupplier,
+    AssetAttachment,
+    AssetMaintenanceRecord,
+    AssetRegisterAsset,
     ExpenseCategory,
     ExpenseEntry,
     Invoice,
@@ -89,6 +92,15 @@ COST_OF_SERVICE_CATEGORIES = {
     "laboratory supplies",
     "lab supplies",
 }
+
+
+ASSET_CATEGORIES = ["Medical equipment", "IT equipment", "Furniture", "Office equipment", "Vehicles/motorcycles", "Leasehold improvements"]
+ASSET_FUNDING_SOURCES = ["Cash", "Loan", "Grant"]
+ASSET_OWNERSHIP_STATUSES = ["Owned", "Leased", "Financed"]
+ASSET_CURRENT_STATUSES = ["Active", "Under repair", "Disposed", "Lost"]
+ASSET_CONDITION_RATINGS = ["New", "Good", "Fair", "Poor", "Faulty", "Beyond repair", "Disposed"]
+ASSET_DISPOSAL_METHODS = ["sold", "scrapped", "donated", "stolen", "written off"]
+ASSET_DOCUMENT_TYPES = ["Purchase invoice", "Receipt", "Delivery note", "Warranty certificate", "User manual", "Service report", "Repair quotation", "Insurance document", "Asset photo", "Disposal document"]
 
 AP_ATTACHMENT_TYPES = [
     "supplier invoice",
@@ -1357,6 +1369,114 @@ def petty_cash_attachment(transaction_id: int):
     full_path = os.path.join(current_app.config["UPLOAD_FOLDER"], txn.attachment_path)
     return send_file(full_path, as_attachment=False)
 
+def _asset_attachment_folder() -> str:
+    folder = os.path.join(current_app.config["UPLOAD_FOLDER"], "asset_register")
+    os.makedirs(folder, exist_ok=True)
+    return folder
+
+
+def _parse_decimal_field(name: str) -> Decimal:
+    return _money((request.form.get(name) or "0").replace(",", ""))
+
+
+def _asset_nbv(asset: AssetRegisterAsset) -> Decimal:
+    return max(_money(asset.purchase_cost) - _money(asset.accumulated_depreciation), Decimal("0.00"))
+
+
+def _asset_annual_depreciation(asset: AssetRegisterAsset) -> Decimal:
+    depreciable = max(_money(asset.purchase_cost) - _money(asset.salvage_value), Decimal("0.00"))
+    life = Decimal(str(asset.useful_life_years or 0))
+    if life > 0:
+        return (depreciable / life).quantize(Decimal("0.01"))
+    rate = Decimal(str(asset.depreciation_rate or 0))
+    return (depreciable * rate / Decimal("100")).quantize(Decimal("0.01"))
+
+
+def _asset_monthly_depreciation(asset: AssetRegisterAsset) -> Decimal:
+    return (_asset_annual_depreciation(asset) / Decimal("12")).quantize(Decimal("0.01"))
+
+
+def _save_asset_attachment(asset: AssetRegisterAsset, file_storage, document_type: str):
+    if not file_storage or not file_storage.filename:
+        return
+    if not _allowed_attachment(file_storage.filename):
+        flash("Unsupported asset attachment type.", "warning")
+        return
+    filename = secure_filename(file_storage.filename)
+    stored = f"asset_{asset.id}_{int(datetime.utcnow().timestamp())}_{filename}"
+    file_storage.save(os.path.join(_asset_attachment_folder(), stored))
+    db.session.add(AssetAttachment(asset_id=asset.id, document_type=document_type or "Other", file_path=os.path.join("asset_register", stored), uploaded_by=getattr(current_user, "username", "system")))
+
+
+@bp.route("/finance/asset-register", methods=["GET", "POST"])
+@login_required
+@roles_required("accountant", "admin")
+def asset_register():
+    today = eat_today().strftime("%Y-%m-%d")
+    if request.method == "POST":
+        action = request.form.get("action")
+        if action == "add_asset":
+            asset = AssetRegisterAsset(
+                asset_id=request.form.get("asset_id") or f"BAMBI-ASSET-{int(datetime.utcnow().timestamp())}",
+                asset_name=request.form.get("asset_name") or "Unnamed asset",
+                category=request.form.get("category") or ASSET_CATEGORIES[0],
+                department_room=request.form.get("department_room"),
+                serial_number=request.form.get("serial_number"),
+                model_brand=request.form.get("model_brand"),
+                supplier_vendor=request.form.get("supplier_vendor"),
+                purchase_date=request.form.get("purchase_date"),
+                purchase_cost=_parse_decimal_field("purchase_cost"),
+                funding_source=request.form.get("funding_source") or "Cash",
+                ownership_status=request.form.get("ownership_status") or "Owned",
+                current_status=request.form.get("current_status") or "Active",
+                custodian=request.form.get("custodian"),
+                useful_life_years=_parse_decimal_field("useful_life_years"),
+                depreciation_method=request.form.get("depreciation_method") or "Straight-line",
+                depreciation_rate=_parse_decimal_field("depreciation_rate"),
+                salvage_value=_parse_decimal_field("salvage_value"),
+                accumulated_depreciation=_parse_decimal_field("accumulated_depreciation"),
+                capitalization_threshold=_parse_decimal_field("capitalization_threshold"),
+                accounting_account=request.form.get("accounting_account"),
+                maintenance_schedule=request.form.get("maintenance_schedule"),
+                last_service_date=request.form.get("last_service_date"),
+                next_service_due_date=request.form.get("next_service_due_date"),
+                service_provider=request.form.get("service_provider"),
+                warranty_start_date=request.form.get("warranty_start_date"),
+                warranty_end_date=request.form.get("warranty_end_date"),
+                warranty_provider=request.form.get("warranty_provider"),
+                insurance_policy_number=request.form.get("insurance_policy_number"),
+                insured_value=_parse_decimal_field("insured_value"),
+                insurance_expiry_date=request.form.get("insurance_expiry_date"),
+                condition_rating=request.form.get("condition_rating") or "Good",
+                notes=request.form.get("notes"),
+                created_by=getattr(current_user, "username", "system"),
+            )
+            db.session.add(asset); db.session.flush()
+            _save_asset_attachment(asset, request.files.get("attachment"), request.form.get("document_type"))
+            db.session.commit(); flash("Asset registered.", "success")
+        elif action == "maintenance":
+            asset = AssetRegisterAsset.query.get_or_404(int(request.form.get("asset_pk")))
+            rec = AssetMaintenanceRecord(asset_id=asset.id, service_date=request.form.get("service_date") or today, next_service_due_date=request.form.get("next_service_due_date"), issue=request.form.get("issue"), technician=request.form.get("technician"), service_cost=_parse_decimal_field("service_cost"), parts_replaced=request.form.get("parts_replaced"), warranty_status=request.form.get("warranty_status"), breakdown_history=request.form.get("breakdown_history"), downtime_days=int(request.form.get("downtime_days") or 0), notes=request.form.get("service_notes"), created_by=getattr(current_user, "username", "system"))
+            asset.last_service_date = rec.service_date; asset.next_service_due_date = rec.next_service_due_date; asset.service_provider = rec.technician; asset.current_status = request.form.get("asset_status") or asset.current_status
+            db.session.add(rec); db.session.flush(); _save_asset_attachment(asset, request.files.get("service_report"), "Service report"); db.session.commit(); flash("Maintenance record saved.", "success")
+        elif action == "dispose":
+            asset = AssetRegisterAsset.query.get_or_404(int(request.form.get("asset_pk")))
+            asset.disposal_date=request.form.get("disposal_date") or today; asset.disposal_reason=request.form.get("disposal_reason"); asset.disposal_method=request.form.get("disposal_method"); asset.sale_value=_parse_decimal_field("sale_value"); asset.approved_by=request.form.get("approved_by"); asset.current_status="Disposed"; asset.condition_rating="Disposed"
+            _save_asset_attachment(asset, request.files.get("disposal_document"), "Disposal document"); db.session.commit(); flash("Asset disposal recorded.", "success")
+        return redirect(url_for("finance.asset_register"))
+    assets = AssetRegisterAsset.query.order_by(AssetRegisterAsset.created_at.desc()).all()
+    due_cutoff = (eat_today() + timedelta(days=30)).strftime("%Y-%m-%d")
+    metrics = {"total_cost": sum(_money(a.purchase_cost) for a in assets), "total_nbv": sum(_asset_nbv(a) for a in assets), "maintenance_due": sum(1 for a in assets if a.next_service_due_date and a.next_service_due_date <= due_cutoff and a.current_status != "Disposed"), "expired_warranty": sum(1 for a in assets if a.warranty_end_date and a.warranty_end_date < today)}
+    return render_template("finance_asset_register.html", assets=assets, categories=ASSET_CATEGORIES, funding_sources=ASSET_FUNDING_SOURCES, ownership_statuses=ASSET_OWNERSHIP_STATUSES, current_statuses=ASSET_CURRENT_STATUSES, condition_ratings=ASSET_CONDITION_RATINGS, disposal_methods=ASSET_DISPOSAL_METHODS, document_types=ASSET_DOCUMENT_TYPES, today=today, due_cutoff=due_cutoff, metrics=metrics, annual_depreciation=_asset_annual_depreciation, monthly_depreciation=_asset_monthly_depreciation, nbv=_asset_nbv)
+
+
+@bp.route("/finance/asset-register/attachment/<int:attachment_id>")
+@login_required
+@roles_required("accountant", "admin")
+def asset_attachment(attachment_id: int):
+    attachment = AssetAttachment.query.get_or_404(attachment_id)
+    return send_file(os.path.join(current_app.config["UPLOAD_FOLDER"], attachment.file_path), as_attachment=False)
+
 
 @bp.before_app_request
 def ensure_petty_cash_tables():
@@ -1378,6 +1498,9 @@ def ensure_petty_cash_tables():
             "ap_payment",
             "ap_recurring_template",
             "ap_audit_log",
+            "asset_register_asset",
+            "asset_maintenance_record",
+            "asset_attachment",
         }
         if not needed.issubset(existing):
             db.create_all()

@@ -69,6 +69,7 @@
                 {% endif %}
                 {% if current_user.role in ['accountant','admin'] %}
                   <li><a class="dropdown-item" href="{{ url_for('finance.income_statement') }}">Income Statement</a></li>
+                  <li><a class="dropdown-item" href="{{ url_for('finance.asset_register') }}">Asset Register</a></li>
                 {% endif %}
               </ul>
             </li>
