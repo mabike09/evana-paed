@@ -691,6 +691,84 @@ class ExpenseEntry(db.Model):
     entered_by = db.Column(db.String(150), nullable=False, index=True)
     created_at = db.Column(db.DateTime, default=eat_now, nullable=False, index=True)
 
+class AssetRegisterAsset(db.Model):
+    __tablename__ = "asset_register_asset"
+
+    id = db.Column(db.Integer, primary_key=True)
+    asset_id = db.Column(db.String(40), nullable=False, unique=True, index=True)
+    asset_name = db.Column(db.String(180), nullable=False, index=True)
+    category = db.Column(db.String(80), nullable=False, index=True)
+    department_room = db.Column(db.String(120), index=True)
+    serial_number = db.Column(db.String(120), index=True)
+    model_brand = db.Column(db.String(120))
+    supplier_vendor = db.Column(db.String(180), index=True)
+    purchase_date = db.Column(db.String(10), index=True)
+    purchase_cost = db.Column(db.Numeric(14, 2), nullable=False, default=0)
+    funding_source = db.Column(db.String(20), nullable=False, default="Cash", index=True)
+    ownership_status = db.Column(db.String(20), nullable=False, default="Owned", index=True)
+    current_status = db.Column(db.String(30), nullable=False, default="Active", index=True)
+    custodian = db.Column(db.String(150), index=True)
+    useful_life_years = db.Column(db.Numeric(6, 2), nullable=False, default=0)
+    depreciation_method = db.Column(db.String(40), nullable=False, default="Straight-line")
+    depreciation_rate = db.Column(db.Numeric(6, 2), nullable=False, default=0)
+    salvage_value = db.Column(db.Numeric(14, 2), nullable=False, default=0)
+    accumulated_depreciation = db.Column(db.Numeric(14, 2), nullable=False, default=0)
+    capitalization_threshold = db.Column(db.Numeric(14, 2), nullable=False, default=0)
+    accounting_account = db.Column(db.String(120), index=True)
+    maintenance_schedule = db.Column(db.String(120))
+    last_service_date = db.Column(db.String(10), index=True)
+    next_service_due_date = db.Column(db.String(10), index=True)
+    service_provider = db.Column(db.String(150))
+    warranty_start_date = db.Column(db.String(10))
+    warranty_end_date = db.Column(db.String(10), index=True)
+    warranty_provider = db.Column(db.String(150))
+    insurance_policy_number = db.Column(db.String(120))
+    insured_value = db.Column(db.Numeric(14, 2), nullable=False, default=0)
+    insurance_expiry_date = db.Column(db.String(10), index=True)
+    condition_rating = db.Column(db.String(30), nullable=False, default="Good", index=True)
+    disposal_date = db.Column(db.String(10), index=True)
+    disposal_reason = db.Column(db.String(255))
+    disposal_method = db.Column(db.String(30), index=True)
+    sale_value = db.Column(db.Numeric(14, 2), nullable=False, default=0)
+    approved_by = db.Column(db.String(150))
+    notes = db.Column(db.Text)
+    created_by = db.Column(db.String(150), nullable=False)
+    created_at = db.Column(db.DateTime, default=eat_now, nullable=False, index=True)
+    updated_at = db.Column(db.DateTime, default=eat_now, onupdate=eat_now, nullable=False)
+
+    maintenance_records = db.relationship("AssetMaintenanceRecord", backref="asset", lazy=True, cascade="all, delete-orphan")
+    attachments = db.relationship("AssetAttachment", backref="asset", lazy=True, cascade="all, delete-orphan")
+
+
+class AssetMaintenanceRecord(db.Model):
+    __tablename__ = "asset_maintenance_record"
+
+    id = db.Column(db.Integer, primary_key=True)
+    asset_id = db.Column(db.Integer, db.ForeignKey("asset_register_asset.id"), nullable=False, index=True)
+    service_date = db.Column(db.String(10), nullable=False, index=True)
+    next_service_due_date = db.Column(db.String(10), index=True)
+    issue = db.Column(db.String(255))
+    technician = db.Column(db.String(150))
+    service_cost = db.Column(db.Numeric(14, 2), nullable=False, default=0)
+    parts_replaced = db.Column(db.String(255))
+    warranty_status = db.Column(db.String(80))
+    breakdown_history = db.Column(db.Text)
+    downtime_days = db.Column(db.Integer, nullable=False, default=0)
+    notes = db.Column(db.Text)
+    created_by = db.Column(db.String(150), nullable=False)
+    created_at = db.Column(db.DateTime, default=eat_now, nullable=False)
+
+
+class AssetAttachment(db.Model):
+    __tablename__ = "asset_attachment"
+
+    id = db.Column(db.Integer, primary_key=True)
+    asset_id = db.Column(db.Integer, db.ForeignKey("asset_register_asset.id"), nullable=False, index=True)
+    document_type = db.Column(db.String(60), nullable=False, index=True)
+    file_path = db.Column(db.String(255), nullable=False)
+    uploaded_by = db.Column(db.String(150), nullable=False)
+    uploaded_at = db.Column(db.DateTime, default=eat_now, nullable=False)
+
 
 class SmsTemplate(db.Model):
     __tablename__ = "sms_template"
