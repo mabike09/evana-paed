@@ -38,6 +38,7 @@ def normalize_payer_name(name: str) -> str:
     mapping = {
         "aar": "AAR",
         "apa": "APA",
+        "cic": "CIC",
         "ga": "GA",
         "icea": "ICEA",
         "prudential": "Prudential",
@@ -217,6 +218,11 @@ def inventory_stock():
     query params: mode, payer, book_id, q
     """
     mode = (request.args.get("mode") or "inventory").strip().lower()
+    if mode in ("pricebook", "merged"):
+        from .prices import ensure_default_payers
+
+        ensure_default_payers()
+
     payer_name_raw = (request.args.get("payer") or "Cash").strip()
     payer_name = normalize_payer_name(payer_name_raw)
     book_id = request.args.get("book_id", type=int)
