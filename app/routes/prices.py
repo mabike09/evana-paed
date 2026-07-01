@@ -16,6 +16,7 @@ DEFAULT_PAYERS = [
     {"name": "Cash", "payer_type": "cash"},
     {"name": "AAR", "payer_type": "insurance"},
     {"name": "APA", "payer_type": "insurance"},
+    {"name": "CIC", "payer_type": "insurance"},
     {"name": "GA", "payer_type": "insurance"},
     {"name": "ICEA", "payer_type": "insurance"},
     {"name": "Prudential", "payer_type": "insurance"},
@@ -29,6 +30,88 @@ def ensure_default_payers():
     for p in DEFAULT_PAYERS:
         _get_or_create(Payer, name=p["name"], defaults={"payer_type": p["payer_type"]})
     db.session.flush()
+    _sync_cic_prices_from_cash()
+    db.session.commit()
+
+
+def _price_item_key(item):
+    if getattr(item, "item_code", None):
+        return ("code", item.item_code.strip().lower())
+    return (
+        "composite",
+        (item.item_type or "").strip().lower(),
+        (item.item_name or "").strip().lower(),
+        (item.unit or "").strip().lower() if item.unit else "",
+    )
+
+
+def _sync_cic_prices_from_cash():
+    """Keep CIC linked to the latest Cash price book values."""
+    cash_payer = Payer.query.filter_by(name="Cash").first()
+    cic_payer = Payer.query.filter_by(name="CIC").first()
+    if not cash_payer or not cic_payer:
+        return
+
+    cash_book = (
+        PriceBook.query
+        .filter_by(payer_id=cash_payer.id)
+        .order_by(PriceBook.effective_date.desc(), PriceBook.id.desc())
+        .first()
+    )
+    if not cash_book:
+        return
+
+    cic_book_name = (cash_book.name or "Cash Price Book").replace("Cash", "CIC")
+    if cic_book_name == cash_book.name:
+        cic_book_name = f"CIC - {cash_book.name}"
+
+    cic_book = (
+        PriceBook.query
+        .filter_by(payer_id=cic_payer.id, name=cic_book_name)
+        .order_by(PriceBook.id.desc())
+        .first()
+    )
+    if not cic_book:
+        cic_book = PriceBook(
+            name=cic_book_name,
+            payer_id=cic_payer.id,
+            effective_date=cash_book.effective_date,
+            currency=cash_book.currency,
+        )
+        db.session.add(cic_book)
+        db.session.flush()
+    else:
+        cic_book.effective_date = cash_book.effective_date
+        cic_book.currency = cash_book.currency
+
+    existing = {
+        _price_item_key(item): item
+        for item in PriceItem.query.filter_by(pricebook_id=cic_book.id).all()
+    }
+    for cash_item in PriceItem.query.filter_by(pricebook_id=cash_book.id).all():
+        key = _price_item_key(cash_item)
+        cic_item = existing.get(key)
+        if cic_item is None:
+            cic_item = PriceItem(
+                pricebook_id=cic_book.id,
+                item_type=cash_item.item_type,
+                item_code=cash_item.item_code,
+                item_name=cash_item.item_name,
+                unit=cash_item.unit,
+                category=cash_item.category,
+                sell_price=cash_item.sell_price,
+                buy_price=cash_item.buy_price,
+            )
+            db.session.add(cic_item)
+            existing[key] = cic_item
+        else:
+            cic_item.item_type = cash_item.item_type
+            cic_item.item_code = cash_item.item_code
+            cic_item.item_name = cash_item.item_name
+            cic_item.unit = cash_item.unit
+            cic_item.category = cash_item.category
+            cic_item.sell_price = cash_item.sell_price
+            cic_item.buy_price = cash_item.buy_price
 
 def normalize_payer_name(name: str) -> str:
     """
@@ -43,6 +126,7 @@ def normalize_payer_name(name: str) -> str:
     mapping = {
         "aar": "AAR",
         "apa": "APA",
+        "cic": "CIC",
         "ga": "GA",
         "icea": "ICEA",
         "prudential": "Prudential",
@@ -108,6 +192,7 @@ def upload_price_form():
         {"name": "Cash", "payer_type": "cash"},
         {"name": "AAR", "payer_type": "insurance"},
         {"name": "APA", "payer_type": "insurance"},
+        {"name": "CIC", "payer_type": "insurance"},
         {"name": "GA", "payer_type": "insurance"},
         {"name": "ICEA", "payer_type": "insurance"},
         {"name": "Prudential", "payer_type": "insurance"},
@@ -408,6 +493,9 @@ def upload_price_apply():
             skipped_rows += 1
             continue
 
+    if (payer.name or "").strip().lower() == "cash":
+        _sync_cic_prices_from_cash()
+
     db.session.commit()
     flash(
         f"Uploaded to “{book.name}” ({payer.name}). "
@@ -469,8 +557,9 @@ def upload_lab_cash_apply():
         flash("File must contain columns: 'LABORATORY TEST' and 'PRICE'.", "danger")
         return redirect(url_for("prices.upload_lab_cash_form"))
 
-    # Ensure Cash payer exists
+    # Ensure Cash and CIC payers exist
     payer, _ = _get_or_create(Payer, name="Cash", defaults={"payer_type": "cash"})
+    _get_or_create(Payer, name="CIC", defaults={"payer_type": "insurance"})
 
     # Ensure a Cash laboratory pricebook exists (latest), else create
     book = (
@@ -524,6 +613,8 @@ def upload_lab_cash_apply():
             item.item_type = "lab"
             item.sell_price = price
             updated += 1
+
+    _sync_cic_prices_from_cash()
 
     db.session.commit()
     flash(f"Lab cash pricelist imported. Created: {created}, Updated: {updated}, Skipped: {skipped}.", "success")

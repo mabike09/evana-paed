@@ -38,6 +38,7 @@ def normalize_payer_name(name: str) -> str:
     mapping = {
         "aar": "AAR",
         "apa": "APA",
+        "cic": "CIC",
         "ga": "GA",
         "icea": "ICEA",
         "prudential": "Prudential",
