@@ -1384,12 +1384,15 @@ def _normalized_patient_form_data(form):
     }
 
 
-def _find_duplicate_patient(first_name, last_name, phone, date_of_birth=None, exclude_patient_id=None):
-    """Find an existing patient matching the identifying registration fields."""
+def _find_duplicate_patient(first_name, last_name, date_of_birth=None, exclude_patient_id=None):
+    """Find an existing patient matching demographic identity fields.
+
+    Phone numbers are intentionally excluded because pediatric patients can share
+    a parent or guardian contact number.
+    """
     query = Patient.query.filter(
         func.lower(func.trim(Patient.first_name)) == first_name.strip().lower(),
         func.lower(func.trim(Patient.last_name)) == last_name.strip().lower(),
-        func.trim(Patient.phone) == phone.strip(),
     )
     if date_of_birth:
         query = query.filter(Patient.date_of_birth == date_of_birth)
@@ -1416,7 +1419,6 @@ def patients_new():
         duplicate = _find_duplicate_patient(
             patient_data["first_name"],
             patient_data["last_name"],
-            patient_data["phone"],
             patient_data["date_of_birth"],
         )
         if duplicate:
