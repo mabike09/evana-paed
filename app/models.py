@@ -858,6 +858,7 @@ class StaffMember(db.Model):
     first_name = db.Column(db.String(80), nullable=False, index=True)
     last_name = db.Column(db.String(80), nullable=False, index=True)
     user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=True, unique=True, index=True)
+    legacy_employee_name = db.Column("employee_name", db.String(150), nullable=False, default="")
     role = db.Column(db.String(80), nullable=False, index=True)
     employment_type = db.Column(db.String(30), nullable=False, default="Full-time")
     salary_type = db.Column(db.String(30), nullable=False, default="Fixed salary")
@@ -881,6 +882,14 @@ class StaffMember(db.Model):
     components = db.relationship("PayrollComponent", backref="staff", lazy=True, cascade="all, delete-orphan")
     loans = db.relationship("StaffLoan", backref="staff", lazy=True, cascade="all, delete-orphan")
     lines = db.relationship("PayrollLine", backref="staff", lazy=True)
+
+
+
+
+@event.listens_for(StaffMember, "before_insert")
+@event.listens_for(StaffMember, "before_update")
+def _staff_member_sync_legacy_name(mapper, connection, target):
+    target.legacy_employee_name = target.employee_name
 
 
 class PayrollPeriod(db.Model):

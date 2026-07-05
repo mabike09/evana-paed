@@ -44,6 +44,9 @@ def _ensure_payroll_tables():
                 db.session.execute(text("ALTER TABLE staff_member ADD COLUMN last_name VARCHAR(80) NOT NULL DEFAULT ''"))
             if "user_id" not in columns:
                 db.session.execute(text("ALTER TABLE staff_member ADD COLUMN user_id INTEGER"))
+            if "employee_name" not in columns:
+                db.session.execute(text("ALTER TABLE staff_member ADD COLUMN employee_name VARCHAR(150) NOT NULL DEFAULT ''"))
+            db.session.execute(text("UPDATE staff_member SET employee_name = trim(coalesce(first_name, '') || ' ' || coalesce(last_name, '')) WHERE coalesce(employee_name, '') = ''"))
             db.session.commit()
     except Exception:
         db.session.rollback()
@@ -103,6 +106,7 @@ def staff_list():
             first_name=first_name,
             last_name=last_name,
             user_id=int(linked_user_id) if linked_user_id else None,
+            legacy_employee_name=f"{first_name} {last_name}".strip(),
             role=request.form.get("role_other") or request.form.get("role"),
             employment_type=request.form.get("employment_type"),
             salary_type=request.form.get("salary_type"),
@@ -115,12 +119,15 @@ def staff_list():
             contract_status=request.form.get("contract_status"),
             department=request.form.get("department"),
         )
-        db.session.add(staff); db.session.flush()
-        staff.staff_id = f"EVP-{staff.id:04d}"
         try:
-            db.session.commit(); flash("Staff member added." + (" User account created and linked." if new_user else ""), "success")
+            db.session.add(staff)
+            db.session.flush()
+            staff.staff_id = f"EVP-{staff.id:04d}"
+            db.session.commit()
+            flash("Staff member added." + (" User account created and linked." if new_user else ""), "success")
         except IntegrityError:
-            db.session.rollback(); flash("Could not save staff because the selected user is already linked or another constraint failed.", "danger")
+            db.session.rollback()
+            flash("Could not save staff because the selected user is already linked or another database constraint failed.", "danger")
         return redirect(url_for("payroll.staff_list"))
     staff = StaffMember.query.order_by(StaffMember.first_name.asc(), StaffMember.last_name.asc()).all()
     linked_ids = [row[0] for row in db.session.query(StaffMember.user_id).filter(StaffMember.user_id.isnot(None)).all()]
