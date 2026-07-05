@@ -10,6 +10,8 @@
 {# Ensure safe_lines is always defined to avoid "undefined" errors #}
 {% set safe_lines = safe_lines|default({}) %}
 {% set can_modify_billing = current_user.role in ['reception','nurse','admin'] %}
+{% set user_role = (current_user.role or '')|lower %}
+{% set can_admin_payment = user_role == 'admin' %}
 
 <div class="row g-3 mb-4">
   <div class="col-md-4">
@@ -258,15 +260,76 @@
             <td class="text-end">{{ '%.0f'|format(pay.amount or 0) }}</td>
             <td class="text-muted small">{{ pay.notes or '—' }}</td>
             <td class="text-end">
-              <a class="btn btn-sm btn-outline-primary"
-                 href="{{ url_for('billing.receipt_print', payment_id=pay.id)}}"
-                 target="_blank">Print Receipt</a>
+              <div class="btn-group btn-group-sm" role="group" aria-label="Payment actions">
+                <a class="btn btn-outline-primary"
+                   href="{{ url_for('billing.receipt_print', payment_id=pay.id)}}"
+                   target="_blank">Print Receipt</a>
+                {% if can_admin_payment %}
+                  <button class="btn btn-outline-secondary" type="button" data-bs-toggle="modal" data-bs-target="#editPaymentModal-{{ pay.id }}">Edit</button>
+                  <button class="btn btn-outline-danger" type="button" data-bs-toggle="modal" data-bs-target="#deletePaymentModal-{{ pay.id }}">Delete</button>
+                {% endif %}
+              </div>
             </td>
           </tr>
         {% endfor %}
       </tbody>
     </table>
   </div>
+
+  {% if can_admin_payment %}
+    {% for pay in payments %}
+      <div class="modal fade" id="editPaymentModal-{{ pay.id }}" tabindex="-1" aria-hidden="true" aria-labelledby="editPaymentModalTitle-{{ pay.id }}">
+        <div class="modal-dialog modal-dialog-centered">
+          <form class="modal-content" method="post" action="{{ url_for('billing.edit_payment', payment_id=pay.id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="modal-header bg-light">
+              <h5 class="modal-title" id="editPaymentModalTitle-{{ pay.id }}">Edit Payment #{{ pay.id }}</h5>
+              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+              <div class="alert alert-warning small">Admin-only correction for payment method and paid amount.</div>
+              <div class="mb-3">
+                <label class="form-label" for="paymentAmount-{{ pay.id }}">Amount (UGX)</label>
+                <input id="paymentAmount-{{ pay.id }}" class="form-control" name="amount" type="number" step="0.01" min="0.01" value="{{ pay.amount or 0 }}" required>
+              </div>
+              <div class="mb-0">
+                <label class="form-label" for="paymentMethod-{{ pay.id }}">Method</label>
+                <select id="paymentMethod-{{ pay.id }}" name="method" class="form-select" required>
+                  {% for method in ['Cash', 'Mobile Money', 'Card', 'Bank', 'Other'] %}
+                    <option value="{{ method }}" {% if (pay.method or '') == method %}selected{% endif %}>{{ method }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+            </div>
+            <div class="modal-footer">
+              <button type="button" class="btn btn-link" data-bs-dismiss="modal">Cancel</button>
+              <button type="submit" class="btn btn-primary">Save Changes</button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      <div class="modal fade" id="deletePaymentModal-{{ pay.id }}" tabindex="-1" aria-hidden="true" aria-labelledby="deletePaymentModalTitle-{{ pay.id }}">
+        <div class="modal-dialog modal-dialog-centered">
+          <form class="modal-content" method="post" action="{{ url_for('billing.delete_payment', payment_id=pay.id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="modal-header bg-danger text-white">
+              <h5 class="modal-title" id="deletePaymentModalTitle-{{ pay.id }}">Delete Payment #{{ pay.id }}</h5>
+              <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+              <p class="mb-1">This will permanently remove the payment of <strong>UGX {{ '%.0f'|format(pay.amount or 0) }}</strong>.</p>
+              <p class="text-muted mb-0">Only admins can delete payments. This action cannot be undone.</p>
+            </div>
+            <div class="modal-footer">
+              <button type="button" class="btn btn-link" data-bs-dismiss="modal">Cancel</button>
+              <button type="submit" class="btn btn-danger">Delete Payment</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    {% endfor %}
+  {% endif %}
 {% else %}
   <div class="alert alert-light border">No payments recorded.</div>
 {% endif %}
