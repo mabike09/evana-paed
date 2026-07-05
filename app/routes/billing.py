@@ -438,6 +438,78 @@ def add_payment(patient_id, invoice_id):
 
 
 
+
+def _payment_redirect_patient_id(payment: Payment) -> int | None:
+    inv = getattr(payment, "invoice", None)
+    if inv is None and getattr(payment, "invoice_id", None):
+        inv = Invoice.query.get(payment.invoice_id)
+    return getattr(inv, "patient_id", None)
+
+
+def _parse_positive_money(raw_value: str | None) -> Decimal:
+    try:
+        amount = Decimal((raw_value or "").replace(",", "").replace(" ", ""))
+        if amount <= 0:
+            raise InvalidOperation()
+        return amount
+    except Exception as exc:
+        raise ValueError("Amount must be greater than zero.") from exc
+
+
+@bp.post("/payments/<int:payment_id>/edit")
+@login_required
+@roles_required("admin")
+def edit_payment(payment_id):
+    """Allow administrators to correct a payment's amount and method."""
+    payment = Payment.query.options(joinedload(Payment.invoice)).get_or_404(payment_id)
+    patient_id = _payment_redirect_patient_id(payment)
+
+    try:
+        payment.amount = _parse_positive_money(request.form.get("amount"))
+    except ValueError:
+        flash("Payment not updated — invalid amount.", "danger")
+        return redirect(url_for("billing.patient_billing", patient_id=patient_id)) if patient_id else redirect(url_for("home.index"))
+
+    method = (request.form.get("method") or "").strip()
+    if not method:
+        flash("Payment not updated — payment method is required.", "danger")
+        return redirect(url_for("billing.patient_billing", patient_id=patient_id)) if patient_id else redirect(url_for("home.index"))
+
+    payment.method = method
+
+    try:
+        db.session.commit()
+        if payment.invoice and patient_id:
+            _ensure_pharmacy_queue_for_paid_invoice(payment.invoice, patient_id)
+            db.session.commit()
+        flash("Payment updated.", "success")
+    except Exception:
+        db.session.rollback()
+        current_app.logger.exception("Payment update failed")
+        flash("Payment not updated — database error.", "danger")
+
+    return redirect(url_for("billing.patient_billing", patient_id=patient_id)) if patient_id else redirect(url_for("home.index"))
+
+
+@bp.post("/payments/<int:payment_id>/delete")
+@login_required
+@roles_required("admin")
+def delete_payment(payment_id):
+    """Allow administrators to delete an incorrect payment record."""
+    payment = Payment.query.options(joinedload(Payment.invoice)).get_or_404(payment_id)
+    patient_id = _payment_redirect_patient_id(payment)
+
+    try:
+        db.session.delete(payment)
+        db.session.commit()
+        flash("Payment deleted.", "success")
+    except Exception:
+        db.session.rollback()
+        current_app.logger.exception("Payment delete failed")
+        flash("Payment not deleted — database error.", "danger")
+
+    return redirect(url_for("billing.patient_billing", patient_id=patient_id)) if patient_id else redirect(url_for("home.index"))
+
 def _invoice_paid_total(invoice_id: int) -> Decimal:
     total = Decimal("0")
     for payment in Payment.query.filter_by(invoice_id=invoice_id).all():
