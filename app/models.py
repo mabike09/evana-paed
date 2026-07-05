@@ -855,7 +855,9 @@ class StaffMember(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     staff_id = db.Column(db.String(30), unique=True, index=True)
-    employee_name = db.Column(db.String(150), nullable=False, index=True)
+    first_name = db.Column(db.String(80), nullable=False, index=True)
+    last_name = db.Column(db.String(80), nullable=False, index=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=True, unique=True, index=True)
     role = db.Column(db.String(80), nullable=False, index=True)
     employment_type = db.Column(db.String(30), nullable=False, default="Full-time")
     salary_type = db.Column(db.String(30), nullable=False, default="Fixed salary")
@@ -869,6 +871,12 @@ class StaffMember(db.Model):
     department = db.Column(db.String(80), nullable=False, index=True)
     created_at = db.Column(db.DateTime, default=eat_now, nullable=False, index=True)
     updated_at = db.Column(db.DateTime, default=eat_now, onupdate=eat_now, nullable=False)
+
+    user = db.relationship("User", backref=db.backref("staff_profile", uselist=False, lazy=True))
+
+    @property
+    def employee_name(self):
+        return f"{self.first_name or ''} {self.last_name or ''}".strip()
 
     components = db.relationship("PayrollComponent", backref="staff", lazy=True, cascade="all, delete-orphan")
     loans = db.relationship("StaffLoan", backref="staff", lazy=True, cascade="all, delete-orphan")
