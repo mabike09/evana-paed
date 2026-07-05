@@ -74,6 +74,17 @@
               </ul>
             </li>
           {% endif %}
+
+          {% if current_user.role in ['admin','accountant'] %}
+            <li class="nav-item dropdown">
+              <a class="nav-link dropdown-toggle" href="#" data-bs-toggle="dropdown">HR</a>
+              <ul class="dropdown-menu">
+                <li><a class="dropdown-item" href="{{ url_for('payroll.staff_list') }}">Staff</a></li>
+                <li><a class="dropdown-item" href="{{ url_for('payroll.dashboard') }}">Payroll</a></li>
+                <li><a class="dropdown-item" href="{{ url_for('payroll.periods') }}">Payroll Periods</a></li>
+              </ul>
+            </li>
+          {% endif %}
           {% if current_user.role == 'admin' %}
             <li class="nav-item dropdown">
               <a class="nav-link dropdown-toggle" href="#" data-bs-toggle="dropdown">Admin</a>

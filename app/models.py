@@ -846,3 +846,126 @@ class PriceItem(db.Model):
     category = db.Column(db.String(128))
     sell_price = db.Column(db.Numeric(12, 2), nullable=False)
     buy_price = db.Column(db.Numeric(12, 2))
+
+# ---------------------------
+# HR / Payroll
+# ---------------------------
+class StaffMember(db.Model):
+    __tablename__ = "staff_member"
+
+    id = db.Column(db.Integer, primary_key=True)
+    staff_id = db.Column(db.String(30), unique=True, index=True)
+    first_name = db.Column(db.String(80), nullable=False, index=True)
+    last_name = db.Column(db.String(80), nullable=False, index=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=True, unique=True, index=True)
+    legacy_employee_name = db.Column("employee_name", db.String(150), nullable=False, default="")
+    role = db.Column(db.String(80), nullable=False, index=True)
+    employment_type = db.Column(db.String(30), nullable=False, default="Full-time")
+    salary_type = db.Column(db.String(30), nullable=False, default="Fixed salary")
+    basic_salary = db.Column(db.Numeric(12, 2), nullable=False, default=0)
+    bank_details = db.Column(db.String(255))
+    mobile_money_details = db.Column(db.String(120))
+    nssf_number = db.Column(db.String(80))
+    tin = db.Column(db.String(80))
+    start_date = db.Column(db.String(10), nullable=False)
+    contract_status = db.Column(db.String(30), nullable=False, default="Active", index=True)
+    department = db.Column(db.String(80), nullable=False, index=True)
+    created_at = db.Column(db.DateTime, default=eat_now, nullable=False, index=True)
+    updated_at = db.Column(db.DateTime, default=eat_now, onupdate=eat_now, nullable=False)
+
+    user = db.relationship("User", backref=db.backref("staff_profile", uselist=False, lazy=True))
+
+    @property
+    def employee_name(self):
+        return f"{self.first_name or ''} {self.last_name or ''}".strip()
+
+    components = db.relationship("PayrollComponent", backref="staff", lazy=True, cascade="all, delete-orphan")
+    loans = db.relationship("StaffLoan", backref="staff", lazy=True, cascade="all, delete-orphan")
+    lines = db.relationship("PayrollLine", backref="staff", lazy=True)
+
+
+
+
+@event.listens_for(StaffMember, "before_insert")
+@event.listens_for(StaffMember, "before_update")
+def _staff_member_sync_legacy_name(mapper, connection, target):
+    target.legacy_employee_name = target.employee_name
+
+
+class PayrollPeriod(db.Model):
+    __tablename__ = "payroll_period"
+
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(80), nullable=False, unique=True, index=True)
+    period_month = db.Column(db.String(7), nullable=False, unique=True, index=True)  # YYYY-MM
+    status = db.Column(db.String(30), nullable=False, default="Draft", index=True)
+    revenue = db.Column(db.Numeric(12, 2), nullable=False, default=0)
+    created_by = db.Column(db.String(150), nullable=False)
+    approved_by = db.Column(db.String(150))
+    approved_at = db.Column(db.DateTime)
+    paid_by = db.Column(db.String(150))
+    paid_at = db.Column(db.DateTime)
+    locked_by = db.Column(db.String(150))
+    locked_at = db.Column(db.DateTime)
+    created_at = db.Column(db.DateTime, default=eat_now, nullable=False, index=True)
+
+    lines = db.relationship("PayrollLine", backref="period", lazy=True, cascade="all, delete-orphan")
+    audit_logs = db.relationship("PayrollAuditLog", backref="period", lazy=True, cascade="all, delete-orphan")
+
+
+class PayrollComponent(db.Model):
+    __tablename__ = "payroll_component"
+
+    id = db.Column(db.Integer, primary_key=True)
+    staff_id = db.Column(db.Integer, db.ForeignKey("staff_member.id"), nullable=False, index=True)
+    name = db.Column(db.String(80), nullable=False)
+    component_type = db.Column(db.String(20), nullable=False, default="earning")  # earning/deduction
+    amount = db.Column(db.Numeric(12, 2), nullable=False, default=0)
+    is_active = db.Column(db.Boolean, nullable=False, default=True, index=True)
+
+
+class StaffLoan(db.Model):
+    __tablename__ = "staff_loan"
+
+    id = db.Column(db.Integer, primary_key=True)
+    staff_id = db.Column(db.Integer, db.ForeignKey("staff_member.id"), nullable=False, index=True)
+    loan_type = db.Column(db.String(30), nullable=False, default="Salary advance")
+    principal_amount = db.Column(db.Numeric(12, 2), nullable=False, default=0)
+    monthly_deduction = db.Column(db.Numeric(12, 2), nullable=False, default=0)
+    outstanding_balance = db.Column(db.Numeric(12, 2), nullable=False, default=0)
+    approved_by = db.Column(db.String(150), nullable=False)
+    approval_date = db.Column(db.String(10), nullable=False)
+    notes = db.Column(db.Text)
+    is_active = db.Column(db.Boolean, nullable=False, default=True, index=True)
+
+
+class PayrollLine(db.Model):
+    __tablename__ = "payroll_line"
+
+    id = db.Column(db.Integer, primary_key=True)
+    period_id = db.Column(db.Integer, db.ForeignKey("payroll_period.id"), nullable=False, index=True)
+    staff_id = db.Column(db.Integer, db.ForeignKey("staff_member.id"), nullable=False, index=True)
+    attendance_days = db.Column(db.Numeric(8, 2), nullable=False, default=0)
+    attendance_hours = db.Column(db.Numeric(8, 2), nullable=False, default=0)
+    basic_pay = db.Column(db.Numeric(12, 2), nullable=False, default=0)
+    allowances = db.Column(db.Numeric(12, 2), nullable=False, default=0)
+    overtime_pay = db.Column(db.Numeric(12, 2), nullable=False, default=0)
+    locum_pay = db.Column(db.Numeric(12, 2), nullable=False, default=0)
+    deductions = db.Column(db.Numeric(12, 2), nullable=False, default=0)
+    loan_deductions = db.Column(db.Numeric(12, 2), nullable=False, default=0)
+    nssf = db.Column(db.Numeric(12, 2), nullable=False, default=0)
+    paye = db.Column(db.Numeric(12, 2), nullable=False, default=0)
+    gross_pay = db.Column(db.Numeric(12, 2), nullable=False, default=0)
+    net_pay = db.Column(db.Numeric(12, 2), nullable=False, default=0)
+
+
+class PayrollAuditLog(db.Model):
+    __tablename__ = "payroll_audit_log"
+
+    id = db.Column(db.Integer, primary_key=True)
+    period_id = db.Column(db.Integer, db.ForeignKey("payroll_period.id"), index=True)
+    action = db.Column(db.String(40), nullable=False, index=True)
+    actor_username = db.Column(db.String(150), nullable=False)
+    actor_role = db.Column(db.String(30))
+    change_summary = db.Column(db.Text)
+    created_at = db.Column(db.DateTime, default=eat_now, nullable=False, index=True)
