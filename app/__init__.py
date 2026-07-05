@@ -105,7 +105,7 @@ def create_app():
     # -------------------------
     # Blueprints
     # -------------------------
-    from .routes import auth, home, patients, queue, billing, lab, files, inventory, reports, prices, pharmacy, finance, sms, claims
+    from .routes import auth, home, patients, queue, billing, lab, files, inventory, reports, prices, pharmacy, finance, sms, claims, payroll
     app.register_blueprint(home.bp)
     app.register_blueprint(auth.bp)
     app.register_blueprint(patients.bp)
@@ -120,6 +120,7 @@ def create_app():
     app.register_blueprint(finance.bp)
     app.register_blueprint(sms.bp)
     app.register_blueprint(claims.bp)
+    app.register_blueprint(payroll.bp)
 
     # -------------------------
     # Invoice editability helper
