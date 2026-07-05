@@ -7,6 +7,7 @@ from flask import Blueprint, render_template, request, redirect, url_for, flash,
 from flask_login import login_required, current_user
 from sqlalchemy.orm import joinedload
 from sqlalchemy import func
+from sqlalchemy.exc import IntegrityError
 
 from ..permissions import roles_required
 from ..extensions import db
@@ -100,6 +101,54 @@ def add_invoice(patient_id):
     return redirect(url_for("billing.patient_billing", patient_id=patient_id))
 
 
+def _assign_receipt_number(payment: Payment, pay_dt) -> None:
+    """Assign the next available receipt number for the payment month.
+
+    Receipt numbers have a uniqueness constraint. The old generator used COUNT(),
+    which can reproduce an existing receipt number whenever historical rows were
+    deleted or imported with gaps. Use the highest existing suffix instead.
+    """
+    if not hasattr(payment, "receipt_no"):
+        return
+
+    try:
+        yymm = pay_dt.strftime("%y%m")
+        like = f"RC-{yymm}-%"
+        existing = (
+            db.session.query(Payment.receipt_no)
+            .filter(Payment.receipt_no.like(like))
+            .all()
+        )
+        max_seq = 0
+        for (receipt_no,) in existing:
+            try:
+                max_seq = max(max_seq, int(str(receipt_no).rsplit("-", 1)[-1]))
+            except (TypeError, ValueError):
+                continue
+        payment.receipt_no = f"RC-{yymm}-{max_seq + 1:04d}"
+    except Exception:
+        payment.receipt_no = generate_receipt_number(pay_dt)
+
+
+def _commit_payment_with_receipt_retry(payment: Payment, pay_dt) -> None:
+    """Commit a payment, retrying receipt-number collisions once."""
+    _assign_receipt_number(payment, pay_dt)
+    db.session.add(payment)
+
+    try:
+        db.session.commit()
+        return
+    except IntegrityError as exc:
+        db.session.rollback()
+        message = str(getattr(exc, "orig", exc)).lower()
+        if "receipt" not in message and "unique" not in message:
+            raise
+
+    _assign_receipt_number(payment, pay_dt)
+    db.session.add(payment)
+    db.session.commit()
+
+
 # ------------------------------------------------------------------------------
 # Record Payment
 # ------------------------------------------------------------------------------
@@ -149,20 +198,11 @@ def add_payment(patient_id, invoice_id):
     if hasattr(pay, "reference"):
         pay.reference = reference
 
-    # Receipt number (safe)
-    if hasattr(pay, "receipt_no"):
-        try:
-            pay.receipt_no = generate_receipt_number(eat_now())
-        except Exception:
-            try:
-                pay.receipt_no = generate_receipt_number()
-            except Exception:
-                pay.receipt_no = None
-
-    db.session.add(pay)
+    if hasattr(pay, "patient_id"):
+        pay.patient_id = patient_id
 
     try:
-        db.session.commit()
+        _commit_payment_with_receipt_retry(pay, pay_dt)
         flash("Payment recorded.", "success")
     except Exception:
         db.session.rollback()
@@ -301,142 +341,6 @@ def add_payment(patient_id, invoice_id):
             current_app.logger.exception("Lab order auto-release failed (non-blocking).")
 
     return redirect(url_for("billing.patient_billing", patient_id=patient_id))
-
-    # Date parse (YYYY-MM-DD), fallback = today
-    try:
-        pay_dt = datetime.strptime(payment_date_str, "%Y-%m-%d").date() if payment_date_str else eat_now().date()
-    except Exception:
-        pay_dt = eat_now().date()
-
-    # 3) Build Payment object with all NOT NULL fields set BEFORE add/flush
-    pay = Payment()
-
-    # **CRITICAL**: set invoice_id first (fixes NOT NULL constraint)
-    if hasattr(pay, "invoice_id"):
-        pay.invoice_id = inv.id
-
-    # Optional: store patient_id if model has it
-    if hasattr(pay, "patient_id"):
-        pay.patient_id = patient_id
-
-    # payment_date supports date/datetime/str; coerce sensibly
-    if hasattr(Payment, "payment_date"):
-        pay.payment_date = pay_dt
-    elif hasattr(pay, "payment_date"):
-        pay.payment_date = pay_dt
-
-    # Amount & Method (both should be present)
-    if hasattr(pay, "amount"):
-        pay.amount = amt
-
-    if hasattr(pay, "method"):
-        pay.method = method
-    elif hasattr(pay, "channel"):  # if your schema uses 'channel' instead
-        pay.channel = method
-
-    # Reference / notes
-    if hasattr(pay, "reference"):
-        pay.reference = reference
-    if reference and hasattr(pay, "notes"):
-        pay.notes = reference
-
-    # Receipt number (safe default)
-    try:
-        pay.receipt_no = generate_receipt_number(eat_now())
-    except Exception:
-        pay.receipt_no = generate_receipt_number()
-
-    # 4) Insert & commit payment
-    db.session.add(pay)
-
-    try:
-        db.session.commit()
-        flash("Payment recorded.", "success")
-
-                # -----------------------------
-        # Auto-release LAB after full payment (robust)
-        # -----------------------------
-        if LabOrder is not None:
-            try:
-                visit_id = getattr(inv, "visit_id", None)
-
-                # Compute balance robustly (don’t rely on inv.balance existing)
-                inv_total = Decimal(str(getattr(inv, "amount", 0) or 0))
-
-                paid_total = Decimal("0")
-                try:
-                    if hasattr(Payment, "invoice_id"):
-                        pays = Payment.query.filter_by(invoice_id=inv.id).all()
-                        for pp in pays:
-                            paid_total += Decimal(str(getattr(pp, "amount", 0) or 0))
-                except Exception:
-                    pass
-
-                balance = inv_total - paid_total
-                fully_paid = (balance <= Decimal("0"))
-
-                if fully_paid:
-                    # 1) Release any lab orders waiting for payment
-                    released = 0
-                    if visit_id:
-                        lab_orders = LabOrder.query.filter_by(
-                            patient_id=patient_id,
-                            visit_id=visit_id,
-                            status="PendingPayment",
-                        ).all()
-                    else:
-                        lab_orders = LabOrder.query.filter_by(
-                            patient_id=patient_id,
-                            status="PendingPayment",
-                        ).all()
-
-                    for lo in lab_orders:
-                        lo.status = "Pending"
-                        released += 1
-
-                    # 2) Only enqueue LAB when at least one lab order was released.
-                    if released:
-                        try:
-                            q = BillingQueue.query.filter_by(status="Open")
-                            if hasattr(BillingQueue, "kind"):
-                                q = q.filter(BillingQueue.kind == "LAB")
-                            if visit_id:
-                                q = q.filter(BillingQueue.visit_id == visit_id)
-                            else:
-                                q = q.filter(BillingQueue.patient_id == patient_id)
-
-                            exists = q.first() is not None
-                            if not exists:
-                                bq = BillingQueue()
-                                if hasattr(bq, "patient_id"): bq.patient_id = patient_id
-                                if hasattr(bq, "visit_id"):   bq.visit_id = visit_id
-                                if hasattr(bq, "status"):     bq.status = "Open"
-                                if hasattr(bq, "added_at"):   bq.added_at = eat_now()
-                                if hasattr(bq, "added_by"):   bq.added_by = getattr(current_user, "id", None)
-                                if hasattr(bq, "kind"):       bq.kind = "LAB"
-                                if hasattr(bq, "description"):bq.description = "Paid lab tests — sent to Lab"
-                                db.session.add(bq)
-                        except Exception:
-                            current_app.logger.exception("Failed ensuring LAB BillingQueue entry")
-
-                    db.session.commit()
-
-                    if released:
-                        flash("Lab payment complete — patient sent to Lab queue.", "success")
-
-            except Exception:
-                db.session.rollback()
-                current_app.logger.exception("Lab order auto-release failed (non-blocking).")
-
-    except Exception:
-        db.session.rollback()
-        current_app.logger.exception("Payment insert failed")
-        flash("Payment not saved — database error.", "danger")
-
-    return redirect(url_for("billing.patient_billing", patient_id=patient_id))
-
-
-
 
 
 def _payment_redirect_patient_id(payment: Payment) -> int | None:
