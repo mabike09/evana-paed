@@ -105,6 +105,7 @@
   {% endif %}
   {% if current_user.role == 'admin' and book %}
     <form method="post" action="{{ url_for('inventory.pricebook_prices_save', book_id=book.id) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   {% endif %}
   <div class="table-responsive">
     <table class="table table-sm table-striped">
