@@ -52,13 +52,7 @@
       <tbody>
         {% for r in invoice_rows %}
           {% set inv = r.obj %}
-          {% set created = inv.created_at if inv and inv.created_at else None %}
-          {% set can_edit = False %}
-          {% if created and created.__class__.__name__ == 'datetime' %}
-            {% if (now - created).total_seconds() <= 86400 %}{% set can_edit = True %}{% endif %}
-          {% elif r.issue_date and r.issue_date == now.strftime('%Y-%m-%d') %}
-            {% set can_edit = True %}
-          {% endif %}
+          {% set can_edit = invoice_editable_by_user(inv, current_user) %}
 
           <tr>
             <td>
