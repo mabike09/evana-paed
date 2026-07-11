@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block title %}Patient Visits{% endblock %}
+{% block content %}
+
+<div class="d-flex align-items-center mb-3">
+  <div>
+    <h1 class="h4 mb-0">Patient Visits</h1>
+    <div class="text-muted small">All recorded patient visits and billing turnaround times.</div>
+  </div>
+  <a class="btn btn-sm btn-outline-secondary ms-auto" href="{{ url_for('patients.patients_list') }}">Back to Patients</a>
+</div>
+
+<div class="table-responsive">
+  <table class="table table-sm table-striped align-middle">
+    <thead>
+      <tr>
+        <th>Date of Visit</th>
+        <th>Time of Visit</th>
+        <th>Patient</th>
+        <th>Seen By</th>
+        <th>Invoice</th>
+        <th>Turn Around Time</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for visit in visits %}
+        <tr>
+          <td>{{ visit.visit_date or (visit.created_at.strftime('%Y-%m-%d') if visit.created_at else '—') }}</td>
+          <td>{{ visit.created_at.strftime('%H:%M') if visit.created_at else '—' }}</td>
+          <td>
+            {% if visit.patient %}
+              <a href="{{ url_for('patients.patient_detail', patient_id=visit.patient.id) }}">
+                {{ visit.patient.first_name }} {{ visit.patient.last_name }}
+              </a>
+              {% if visit.patient.patient_code %}<span class="text-muted">({{ visit.patient.patient_code }})</span>{% endif %}
+            {% else %}
+              Patient #{{ visit.patient_id }}
+            {% endif %}
+          </td>
+          <td>
+            {% if visit.seen_by %}
+              {% set staff = staff_by_user_id.get(visit.seen_by_id) %}
+              Dr. {{ staff.first_name if staff else visit.seen_by.username.split()[0] }}
+            {% else %}
+              —
+            {% endif %}
+          </td>
+          <td>
+            {% if visit.invoice %}
+              <a href="{{ url_for('billing.invoice_print', invoice_id=visit.invoice.id) }}">
+                {{ visit.invoice.number or ('Invoice #' ~ visit.invoice.id) }}
+              </a>
+            {% else %}
+              —
+            {% endif %}
+          </td>
+          <td>{{ visit.turnaround_minutes }} min{% if not visit.closed_at %} (ongoing){% endif %}</td>
+        </tr>
+      {% else %}
+        <tr>
+          <td colspan="6" class="text-center text-muted py-4">No visits recorded yet.</td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{% endblock %}

@@ -35,7 +35,15 @@
       <ul class="navbar-nav me-auto">
         {% if current_user.is_authenticated %}
           {% if current_user.role in ['reception','nurse','accountant','admin'] %}
-            <li class="nav-item"><a class="nav-link" href="{{ url_for('patients.patients_list') }}">Patients</a></li>
+            <li class="nav-item dropdown">
+              <a class="nav-link dropdown-toggle" href="#" data-bs-toggle="dropdown">Patients</a>
+              <ul class="dropdown-menu">
+                <li><a class="dropdown-item" href="{{ url_for('patients.patients_list') }}">Patient List</a></li>
+                {% if current_user.role in ['reception','nurse','admin'] %}
+                  <li><a class="dropdown-item" href="{{ url_for('patients.patient_visits') }}">Visits</a></li>
+                {% endif %}
+              </ul>
+            </li>
             <li class="nav-item"><a class="nav-link" href="{{ url_for('reports.reports_dashboard') }}">Reports</a></li>
           {% endif %}
           {% if current_user.is_authenticated and current_user.role in ['doctor','pediatrician','admin'] %}
