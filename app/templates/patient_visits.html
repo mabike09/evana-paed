@@ -47,7 +47,7 @@
           </td>
           <td>
             {% if visit.invoice %}
-              <a href="{{ url_for('billing.patient_billing', patient_id=visit.patient_id) }}">
+              <a href="{{ url_for('billing.invoice_print', invoice_id=visit.invoice.id) }}">
                 {{ visit.invoice.number or ('Invoice #' ~ visit.invoice.id) }}
               </a>
             {% else %}
