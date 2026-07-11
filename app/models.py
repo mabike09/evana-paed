@@ -58,6 +58,7 @@ class Visit(db.Model):
     status = db.Column(db.String(10), nullable=False, default="Open")  # Open / Closed
     current_station = db.Column(db.String(20), nullable=False, default="TRIAGE")  # TRIAGE/DOCTOR/LAB/PHARMACY/BILLING/CLOSED
     closed_at = db.Column(db.DateTime)
+    seen_by_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=True, index=True)
 
     # Clinician notes
     notes = db.Column(db.Text)
@@ -81,6 +82,7 @@ class Visit(db.Model):
 
     files = db.relationship("FileAsset", backref="visit_ref", lazy=True)
     invoice = db.relationship("Invoice", backref="visit", uselist=False)
+    seen_by = db.relationship("User", foreign_keys=[seen_by_id])
 
     created_at = db.Column(db.DateTime, default=eat_now, nullable=False, index=True)
 

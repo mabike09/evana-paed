@@ -37,7 +37,14 @@
               Patient #{{ visit.patient_id }}
             {% endif %}
           </td>
-          <td>—</td>
+          <td>
+            {% if visit.seen_by %}
+              {% set staff = staff_by_user_id.get(visit.seen_by_id) %}
+              Dr. {{ staff.first_name if staff else visit.seen_by.username.split()[0] }}
+            {% else %}
+              —
+            {% endif %}
+          </td>
           <td>
             {% if visit.invoice %}
               <a href="{{ url_for('billing.patient_billing', patient_id=visit.patient_id) }}">
