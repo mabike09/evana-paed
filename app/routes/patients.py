@@ -1048,6 +1048,19 @@ def patients_list():
     )
 
 
+@bp.get("/patients/visits")
+@login_required
+@roles_required("reception", "nurse", "admin")
+def patient_visits():
+    visits = (
+        Visit.query
+        .order_by(Visit.created_at.desc(), Visit.id.desc())
+        .all()
+    )
+
+    return render_template("patient_visits.html", visits=visits)
+
+
 @bp.post("/patients/<int:patient_id>/send-to-lab")
 @login_required
 @roles_required("reception", "nurse", "admin")
