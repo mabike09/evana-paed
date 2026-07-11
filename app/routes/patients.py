@@ -6,12 +6,12 @@ from flask import Blueprint, render_template, request, redirect, url_for, flash,
 from flask_login import login_required, current_user
 from sqlalchemy import or_, cast, func
 from sqlalchemy.types import String
-from sqlalchemy.orm import load_only
+from sqlalchemy.orm import joinedload, load_only
 
 from ..extensions import db
 from ..permissions import roles_required
 from ..forms import PatientForm, VisitForm, InvoiceForm, PaymentForm
-from ..models import Patient, Visit, Invoice, Payment, BillingQueue, FileAsset, Insurer
+from ..models import Patient, Visit, Invoice, Payment, BillingQueue, FileAsset, Insurer, StaffMember
 from ..utils import generate_patient_code, generate_invoice_number, generate_receipt_number
 from ..timezone import eat_now
 
@@ -1048,6 +1048,29 @@ def patients_list():
     )
 
 
+@bp.get("/patients/visits")
+@login_required
+@roles_required("reception", "nurse", "admin")
+def patient_visits():
+    visits = (
+        Visit.query
+        .options(joinedload(Visit.patient), joinedload(Visit.invoice), joinedload(Visit.seen_by))
+        .order_by(Visit.created_at.desc(), Visit.id.desc())
+        .all()
+    )
+    seen_user_ids = [visit.seen_by_id for visit in visits if visit.seen_by_id]
+    staff_by_user_id = {
+        staff.user_id: staff
+        for staff in StaffMember.query.filter(StaffMember.user_id.in_(seen_user_ids)).all()
+    } if seen_user_ids else {}
+
+    return render_template(
+        "patient_visits.html",
+        visits=visits,
+        staff_by_user_id=staff_by_user_id,
+    )
+
+
 @bp.post("/patients/<int:patient_id>/send-to-lab")
 @login_required
 @roles_required("reception", "nurse", "admin")
@@ -1612,6 +1635,10 @@ def patient_chart(patient_id):
     else:
         visit = visits[0] if visits else None
 
+    if visit and current_user.role in {"doctor", "pediatrician"} and not visit.seen_by_id:
+        visit.seen_by_id = current_user.id
+        db.session.commit()
+
     # Visit-specific invoice (THIS is what prevents mixing across visits)
     visit_invoice = None
     if visit:
@@ -1665,6 +1692,8 @@ def patient_chart(patient_id):
 @roles_required("doctor", "pediatrician", "admin")
 def visit_close_and_bill(visit_id):
     v = Visit.query.get_or_404(visit_id)
+    if current_user.role in {"doctor", "pediatrician"} and not v.seen_by_id:
+        v.seen_by_id = current_user.id
 
     inv = Invoice.query.filter_by(visit_id=visit_id).order_by(Invoice.id.desc()).first()
     if not inv:
