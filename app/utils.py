@@ -38,12 +38,16 @@ def generate_receipt_number(pay_date: date | None = None) -> str:
            .filter(Payment.receipt_no.like(like)).scalar() or 0) + 1
     return f"RC-{yymm}-{seq:04d}"
     
+def _invoice_is_locked(inv) -> bool:
+    status = (getattr(inv, "status", None) or "").lower()
+    return status in {"paid", "void", "cancelled", "canceled"}
+
+
 def invoice_editable_now(inv) -> bool:
     try:
-        status = (getattr(inv, "status", None) or "").lower()
-        if status in {"paid", "void", "cancelled", "canceled"}:
+        if _invoice_is_locked(inv):
             return False
-        dt = getattr(inv, "created_at", None) or getattr(inv, "issued_at", None) or getattr(inv, "date", None)
+        dt = getattr(inv, "created_at", None) or getattr(inv, "issued_at", None) or getattr(inv, "issue_date", None) or getattr(inv, "date", None)
         if not dt: return False
         from datetime import datetime as _dt
         if not isinstance(dt, _dt):
@@ -52,6 +56,19 @@ def invoice_editable_now(inv) -> bool:
             dt = parsed if isinstance(parsed, _dt) else _dt(parsed.year, parsed.month, parsed.day)
         window = timedelta(hours=current_app.config.get("INVOICE_EDIT_WINDOW_HOURS", 24))
         return (eat_now() - dt) <= window
+    except Exception:
+        return False
+
+
+def invoice_editable_by_user(inv, user) -> bool:
+    """Return whether ``user`` may edit ``inv`` under the invoice edit policy."""
+    try:
+        if _invoice_is_locked(inv):
+            return False
+        role = (getattr(user, "role", None) or "").strip().lower()
+        if role == "admin":
+            return True
+        return invoice_editable_now(inv)
     except Exception:
         return False
 

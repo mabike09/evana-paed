@@ -125,9 +125,12 @@ def create_app():
     # -------------------------
     # Invoice editability helper
     # -------------------------
-    from .utils import invoice_editable_now
+    from .utils import invoice_editable_by_user, invoice_editable_now
     app.config.setdefault("INVOICE_EDIT_WINDOW_HOURS", 24)
-    app.jinja_env.globals.update(invoice_editable_now=invoice_editable_now)
+    app.jinja_env.globals.update(
+        invoice_editable_by_user=invoice_editable_by_user,
+        invoice_editable_now=invoice_editable_now,
+    )
 
     # -------------------------
     # Normalize legacy invoice payer enum values once per process

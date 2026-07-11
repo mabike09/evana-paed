@@ -18,7 +18,7 @@ from ..models import (
     Item, ItemPrice,
     BillingQueue, ClinicianQueue
 )
-from ..utils import generate_invoice_number, generate_receipt_number
+from ..utils import generate_invoice_number, generate_receipt_number, invoice_editable_by_user
 from ..pdf import invoice_pdf_response, payment_pdf_response
 from ..timezone import eat_now
 
@@ -719,6 +719,10 @@ def invoice_edit(invoice_id):
     next_target = (request.values.get("next") or "").strip()
     if not next_target.startswith("/"):
         next_target = ""
+
+    if not invoice_editable_by_user(inv, current_user):
+        flash("Only administrators can edit invoices after the 24-hour edit window.", "warning")
+        return redirect(next_target or url_for("billing.patient_billing", patient_id=inv.patient_id))
 
     if request.method == "GET":
         return render_template("invoice_edit.html", inv=inv, p=inv.patient, next_target=next_target)
