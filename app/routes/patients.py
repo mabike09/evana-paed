@@ -58,6 +58,8 @@ Procedure = _ProcModel
 
 bp = Blueprint("patients", __name__)
 
+PATIENTS_PER_PAGE = 200
+
 # --- Model aliases used by patient_chart() ---
 try:
     from ..models import Item as _DrugModel
@@ -969,6 +971,10 @@ def _lab_results_for_visit(visit_id: int):
 @roles_required("reception", "nurse", "doctor", "pediatrician", "accountant", "admin")
 def patients_list():
     q = (request.args.get("q") or "").strip()
+    page = request.args.get("page", 1, type=int)
+    if page < 1:
+        page = 1
+
     query = Patient.query
     if q:
         like = f"%{q}%"
@@ -982,7 +988,18 @@ def patients_list():
             cast(Patient.id, String).ilike(like),
             Patient.patient_code.ilike(like),
         ))
-    patients = query.order_by(Patient.id.desc()).limit(300).all()
+
+    total_patients = query.count()
+    total_pages = max(1, (total_patients + PATIENTS_PER_PAGE - 1) // PATIENTS_PER_PAGE)
+    if page > total_pages:
+        page = total_pages
+
+    patients = (
+        query.order_by(Patient.id.desc())
+        .offset((page - 1) * PATIENTS_PER_PAGE)
+        .limit(PATIENTS_PER_PAGE)
+        .all()
+    )
 
     latest_visit_by_patient = {}
     if patients:
@@ -1024,6 +1041,10 @@ def patients_list():
         billing_queue=open_q,
         latest_visit_by_patient=latest_visit_by_patient,
         lab_tests_by_patient=lab_tests_by_patient,
+        page=page,
+        per_page=PATIENTS_PER_PAGE,
+        total_patients=total_patients,
+        total_pages=total_pages,
     )
 
 
