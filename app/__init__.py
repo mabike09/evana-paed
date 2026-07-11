@@ -133,6 +133,33 @@ def create_app():
     )
 
     # -------------------------
+    # Lightweight schema guard for deployed SQLite databases
+    # -------------------------
+    @app.before_request
+    def _ensure_visit_seen_by_column_once():
+        if getattr(app, "_visit_seen_by_schema_checked", False):
+            return
+        try:
+            inspector = inspect(db.engine)
+            table_names = set(inspector.get_table_names())
+            if "visit" not in table_names:
+                app._visit_seen_by_schema_checked = True  # type: ignore[attr-defined]
+                return
+            visit_columns = {col["name"] for col in inspector.get_columns("visit")}
+            if "seen_by_id" not in visit_columns:
+                db.session.execute(text("ALTER TABLE visit ADD COLUMN seen_by_id INTEGER"))
+                db.session.execute(text("CREATE INDEX IF NOT EXISTS ix_visit_seen_by_id ON visit (seen_by_id)"))
+                db.session.commit()
+                app.logger.info("Added missing visit.seen_by_id column for visit clinician tracking")
+            else:
+                db.session.execute(text("CREATE INDEX IF NOT EXISTS ix_visit_seen_by_id ON visit (seen_by_id)"))
+                db.session.commit()
+        except Exception as e:
+            db.session.rollback()
+            app.logger.warning(f"Visit seen_by_id schema check skipped: {e}")
+        app._visit_seen_by_schema_checked = True  # type: ignore[attr-defined]
+
+    # -------------------------
     # Normalize legacy invoice payer enum values once per process
     # -------------------------
     @app.before_request
