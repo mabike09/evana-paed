@@ -148,6 +148,65 @@ def pricebook_prices_save(book_id):
         )
     )
 
+
+@bp.route("/inventory/pricebook/<int:book_id>/items", methods=["POST"])
+@login_required
+@roles_required("admin")
+def pricebook_item_add(book_id):
+    """Copy one drug from the latest Cash price book into an insurance price book."""
+    book = PriceBook.query.get_or_404(book_id)
+    payer = Payer.query.get(book.payer_id)
+    redirect_url = url_for(
+        "inventory.inventory_stock", mode="pricebook",
+        payer=payer.name if payer else "Cash", book_id=book.id,
+    )
+    if not payer or (payer.payer_type or "").strip().lower() != "insurance":
+        flash("Items can only be added here to an insurance price book.", "warning")
+        return redirect(redirect_url)
+
+    cash_payer = Payer.query.filter(func.lower(func.trim(Payer.name)) == "cash").first()
+    cash_book = None
+    if cash_payer:
+        cash_book = (PriceBook.query.filter_by(payer_id=cash_payer.id)
+                     .order_by(PriceBook.effective_date.desc().nullslast(), PriceBook.id.desc()).first())
+    cash_item_id = request.form.get("cash_item_id", type=int)
+    cash_item = PriceItem.query.get(cash_item_id) if cash_item_id else None
+    if (not cash_item or not cash_book or cash_item.pricebook_id != cash_book.id
+            or (cash_item.item_type or "").strip().lower() != "drug"):
+        flash("Select a valid drug from the latest Cash price book.", "warning")
+        return redirect(redirect_url)
+
+    try:
+        sell_price = Decimal((request.form.get("sell_price") or "").strip())
+        if sell_price < 0:
+            raise ValueError
+    except Exception:
+        flash("Enter a valid insurance sell price.", "warning")
+        return redirect(redirect_url)
+
+    duplicate_query = PriceItem.query.filter(PriceItem.pricebook_id == book.id)
+    if cash_item.item_code:
+        duplicate_query = duplicate_query.filter(
+            func.lower(func.trim(PriceItem.item_code)) == cash_item.item_code.strip().lower())
+    else:
+        duplicate_query = duplicate_query.filter(
+            func.lower(func.trim(PriceItem.item_type)) == (cash_item.item_type or "").strip().lower(),
+            func.lower(func.trim(PriceItem.item_name)) == cash_item.item_name.strip().lower(),
+            func.lower(func.trim(func.coalesce(PriceItem.unit, ""))) == (cash_item.unit or "").strip().lower(),
+        )
+    if duplicate_query.first():
+        flash(f"{cash_item.item_name} is already in {book.name}.", "warning")
+        return redirect(redirect_url)
+
+    db.session.add(PriceItem(
+        pricebook_id=book.id, item_type=cash_item.item_type, item_code=cash_item.item_code,
+        item_name=cash_item.item_name, unit=cash_item.unit, category=cash_item.category,
+        sell_price=sell_price, buy_price=cash_item.buy_price,
+    ))
+    db.session.commit()
+    flash(f"Added {cash_item.item_name} to {book.name}.", "success")
+    return redirect(redirect_url)
+
 @bp.route("/inventory/items/new", methods=["GET", "POST"])
 @login_required
 @roles_required("admin")
@@ -262,6 +321,7 @@ def inventory_stock():
     items = []
     rows_price = []
     rows_merged = []
+    available_cash_drugs = []
 
     if mode == "inventory" or not book:
         query = Item.query
@@ -276,6 +336,32 @@ def inventory_stock():
             like = f"%{q}%"
             piq = piq.filter(or_(PriceItem.item_name.ilike(like), PriceItem.item_code.ilike(like)))
         rows_price = piq.order_by(PriceItem.item_type.asc(), PriceItem.item_name.asc()).all()
+
+        if current_user.role == "admin" and (book.payer.payer_type or "").lower() == "insurance":
+            cash_payer = Payer.query.filter(func.lower(func.trim(Payer.name)) == "cash").first()
+            cash_book = None
+            if cash_payer:
+                cash_book = (PriceBook.query.filter_by(payer_id=cash_payer.id)
+                             .order_by(PriceBook.effective_date.desc().nullslast(), PriceBook.id.desc()).first())
+            if cash_book:
+                insurance_items = PriceItem.query.filter_by(pricebook_id=book.id).all()
+                existing_codes = {row.item_code.strip().lower() for row in insurance_items if row.item_code}
+                existing_composites = {
+                    ((row.item_type or "").strip().lower(), (row.item_name or "").strip().lower(),
+                     (row.unit or "").strip().lower())
+                    for row in insurance_items if not row.item_code
+                }
+                cash_drugs = (PriceItem.query.filter_by(pricebook_id=cash_book.id, item_type="drug")
+                              .order_by(PriceItem.item_name.asc()).all())
+                for row in cash_drugs:
+                    if row.item_code:
+                        is_existing = row.item_code.strip().lower() in existing_codes
+                    else:
+                        key = ((row.item_type or "").strip().lower(),
+                               (row.item_name or "").strip().lower(), (row.unit or "").strip().lower())
+                        is_existing = key in existing_composites
+                    if not is_existing:
+                        available_cash_drugs.append(row)
 
     if mode == "merged" and book:
         pi = db.aliased(PriceItem)
@@ -321,6 +407,7 @@ def inventory_stock():
         items=items,
         rows_price=rows_price,
         rows_merged=rows_merged,
+        available_cash_drugs=available_cash_drugs,
         low_count=len(low),
         q=q
     )
