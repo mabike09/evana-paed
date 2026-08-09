@@ -104,6 +104,39 @@
     </form>
   {% endif %}
   {% if current_user.role == 'admin' and book %}
+    {% if book.payer.payer_type == 'insurance' %}
+      <div class="card mb-3">
+        <div class="card-body">
+          <h2 class="h6 card-title">Add a drug from the Cash price book</h2>
+          {% if available_cash_drugs %}
+            <form method="post" action="{{ url_for('inventory.pricebook_item_add', book_id=book.id) }}" class="row g-2 align-items-end">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <div class="col-lg-7">
+                <label class="form-label" for="cash_item_id">Drug</label>
+                <select class="form-select" id="cash_item_id" name="cash_item_id" required>
+                  <option value="">— Select a Cash price-list drug —</option>
+                  {% for drug in available_cash_drugs %}
+                    <option value="{{ drug.id }}" data-cash-price="{{ drug.sell_price }}">
+                      {{ drug.item_name }}{% if drug.item_code %} ({{ drug.item_code }}){% endif %} — UGX {{ '%.0f' % drug.sell_price }}
+                    </option>
+                  {% endfor %}
+                </select>
+              </div>
+              <div class="col-lg-3">
+                <label class="form-label" for="insurance_sell_price">Insurance sell price</label>
+                <input class="form-control" id="insurance_sell_price" name="sell_price" type="number" min="0" step="0.01" required>
+              </div>
+              <div class="col-lg-2">
+                <button class="btn btn-success w-100" type="submit">Add Item</button>
+              </div>
+            </form>
+            <div class="form-text">Selecting a drug fills in its Cash price; change it to the insurer's agreed price before adding.</div>
+          {% else %}
+            <p class="text-muted mb-0">Every drug in the latest Cash price book is already in this price book, or no Cash drug list is available.</p>
+          {% endif %}
+        </div>
+      </div>
+    {% endif %}
     <form method="post" action="{{ url_for('inventory.pricebook_prices_save', book_id=book.id) }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   {% endif %}
@@ -159,6 +192,17 @@
     </div>
     </form>
   {% endif %}
+
+  <script>
+    const cashDrugSelect = document.getElementById('cash_item_id');
+    const insurancePriceInput = document.getElementById('insurance_sell_price');
+    if (cashDrugSelect && insurancePriceInput) {
+      cashDrugSelect.addEventListener('change', () => {
+        const option = cashDrugSelect.options[cashDrugSelect.selectedIndex];
+        insurancePriceInput.value = option.dataset.cashPrice || '';
+      });
+    }
+  </script>
 
 {% elif mode == 'merged' %}
   <div class="small text-muted mb-2">
