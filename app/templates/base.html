@@ -53,7 +53,16 @@
             <li class="nav-item"><a class="nav-link" href="{{ url_for('lab.lab_queue') }}">Lab Queue</a></li>
           {% endif %}
           {% if current_user.role in ['nurse','admin'] %}
-            <li class="nav-item"><a class="nav-link" href="{{ url_for('inventory.inventory_stock') }}">Inventory</a></li>
+            <li class="nav-item dropdown">
+              <a class="nav-link dropdown-toggle" href="#" data-bs-toggle="dropdown">Inventory</a>
+              <ul class="dropdown-menu">
+                <li><a class="dropdown-item" href="{{ url_for('inventory.inventory_stock', mode='inventory') }}">Inventory Stock</a></li>
+                {% if current_user.role == 'admin' %}
+                  <li><a class="dropdown-item" href="{{ url_for('inventory.inventory_stock', mode='pricebook', payer='AAR') }}">Insurance Price Books</a></li>
+                  <li><a class="dropdown-item" href="{{ url_for('prices.upload_price_form') }}">Price Upload</a></li>
+                {% endif %}
+              </ul>
+            </li>
             {% if has_endpoint('pharmacy.pharmacy_dashboard') %}
               <li class="nav-item"><a class="nav-link" href="{{ url_for('pharmacy.pharmacy_dashboard') }}">Pharmacy</a></li>
             {% endif %}
@@ -100,8 +109,6 @@
                 <li><a class="dropdown-item" href="{{ url_for('auth.users_list') }}">Users</a></li>
                 <li><a class="dropdown-item" href="{{ url_for('reports.aging_report') }}">Aging Report</a></li>
                 <li><a class="dropdown-item" href="{{ url_for('reports.payer_split') }}">Payer Split</a></li>
-                <li><a class="dropdown-item" href="{{ url_for('inventory.items_prices') }}">Items & Prices</a></li>
-                <li><a class="dropdown-item" href="{{ url_for('prices.upload_price_form') }}">Price Upload</a></li>
                 <li><a class="dropdown-item" href="{{ url_for('prices.upload_lab_cash_form') }}">Lab Cash Pricelist Upload</a></li>
                 <li><a class="dropdown-item" href="{{ url_for('sms.sms_manager') }}">SMS Manager</a></li>
               </ul>
