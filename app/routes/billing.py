@@ -13,12 +13,12 @@ from ..permissions import roles_required
 from ..extensions import db
 from ..forms import InvoiceForm, PaymentForm, InvoiceEditForm
 from ..models import (
-    Invoice, Payment, InvoiceLine, Patient,
+    Invoice, Payment, InvoiceLine, InsuranceClaim, Patient,
     Procedure, ProcedurePrice,
     Item, ItemPrice,
     BillingQueue, ClinicianQueue
 )
-from ..utils import generate_invoice_number, generate_receipt_number, invoice_editable_by_user
+from ..utils import generate_invoice_number, generate_receipt_number
 from ..pdf import invoice_pdf_response, payment_pdf_response
 from ..timezone import eat_now
 
@@ -712,17 +712,13 @@ def api_search_catalog():
 # ------------------------------------------------------------------------------
 @bp.route("/invoices/<int:invoice_id>/edit", methods=["GET", "POST"])
 @login_required
-@roles_required("admin", "reception", "nurse", "doctor", "pediatrician")
+@roles_required("admin")
 def invoice_edit(invoice_id):
     inv = Invoice.query.options(joinedload(Invoice.lines)).get_or_404(invoice_id)
 
     next_target = (request.values.get("next") or "").strip()
     if not next_target.startswith("/"):
         next_target = ""
-
-    if not invoice_editable_by_user(inv, current_user):
-        flash("Only administrators can edit invoices after the 24-hour edit window.", "warning")
-        return redirect(next_target or url_for("billing.patient_billing", patient_id=inv.patient_id))
 
     if request.method == "GET":
         return render_template("invoice_edit.html", inv=inv, p=inv.patient, next_target=next_target)
@@ -831,6 +827,31 @@ def invoice_edit(invoice_id):
     if next_target:
         return redirect(next_target)
     return redirect(url_for("billing.patient_billing", patient_id=inv.patient_id))
+
+
+@bp.post("/invoices/<int:invoice_id>/delete")
+@login_required
+@roles_required("admin")
+def invoice_delete(invoice_id):
+    """Delete an invoice and its dependent billing records as an administrator."""
+    inv = Invoice.query.options(
+        joinedload(Invoice.lines),
+        joinedload(Invoice.payments),
+    ).get_or_404(invoice_id)
+    patient_id = inv.patient_id
+
+    try:
+        # Claims do not have an ORM delete cascade, so remove one explicitly.
+        InsuranceClaim.query.filter_by(invoice_id=inv.id).delete(synchronize_session=False)
+        db.session.delete(inv)
+        db.session.commit()
+        flash("Invoice deleted.", "success")
+    except Exception:
+        db.session.rollback()
+        current_app.logger.exception("Invoice delete failed")
+        flash("Invoice not deleted — database error.", "danger")
+
+    return redirect(url_for("billing.patient_billing", patient_id=patient_id))
 
 
 # ------------------------------------------------------------------------------
