@@ -12,6 +12,7 @@
 {% set can_modify_billing = current_user.role in ['reception','nurse','admin'] %}
 {% set user_role = (current_user.role or '')|lower %}
 {% set can_admin_payment = user_role == 'admin' %}
+{% set can_admin_invoice = user_role == 'admin' %}
 
 <div class="row g-3 mb-4">
   <div class="col-md-4">
@@ -52,8 +53,6 @@
       <tbody>
         {% for r in invoice_rows %}
           {% set inv = r.obj %}
-          {% set can_edit = invoice_editable_by_user(inv, current_user) %}
-
           <tr>
             <td>
               <button class="btn btn-link p-0" data-bs-toggle="collapse" data-bs-target="#inv-rows-{{ inv.id }}" aria-expanded="false" aria-controls="inv-rows-{{ inv.id }}">
@@ -79,11 +78,17 @@
                     </button>
                   </li>
                   {% endif %}
-                  {% if can_modify_billing and can_edit %}
+                  {% if can_admin_invoice %}
                   <li>
                     <a class="dropdown-item" href="{{ url_for('billing.invoice_edit', invoice_id=inv.id) }}">
                       Edit Invoice
                     </a>
+                  </li>
+                  <li><hr class="dropdown-divider"></li>
+                  <li>
+                    <button class="dropdown-item text-danger" type="button" data-bs-toggle="modal" data-bs-target="#deleteInvoiceModal-{{ inv.id }}">
+                      Delete Invoice
+                    </button>
                   </li>
                   {% endif %}
                   {% if can_modify_billing and inv.payer_type == 'Insurance' %}
@@ -215,6 +220,31 @@
       </div>
     </div>
   {% endfor %}
+  {% endif %}
+
+  {% if can_admin_invoice %}
+    {% for r in invoice_rows %}
+      {% set inv = r.obj %}
+      <div class="modal fade" id="deleteInvoiceModal-{{ inv.id }}" tabindex="-1" aria-hidden="true" aria-labelledby="deleteInvoiceModalTitle-{{ inv.id }}">
+        <div class="modal-dialog modal-dialog-centered">
+          <form class="modal-content" method="post" action="{{ url_for('billing.invoice_delete', invoice_id=inv.id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="modal-header bg-light">
+              <h5 class="modal-title" id="deleteInvoiceModalTitle-{{ inv.id }}">Delete Invoice {{ r.number }}</h5>
+              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+              <p class="mb-2">Are you sure you want to delete this invoice?</p>
+              <p class="text-danger mb-0">Its invoice lines, payments, and insurance claim will also be permanently deleted. This action cannot be undone.</p>
+            </div>
+            <div class="modal-footer">
+              <button type="button" class="btn btn-link" data-bs-dismiss="modal">Cancel</button>
+              <button type="submit" class="btn btn-danger">Delete Invoice</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    {% endfor %}
   {% endif %}
 
 {% else %}
