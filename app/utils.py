@@ -55,19 +55,26 @@ def invoice_editable_now(inv) -> bool:
             parsed = parser.parse(str(dt))
             dt = parsed if isinstance(parsed, _dt) else _dt(parsed.year, parsed.month, parsed.day)
         window = timedelta(hours=current_app.config.get("INVOICE_EDIT_WINDOW_HOURS", 24))
-        return (eat_now() - dt) <= window
+        age = eat_now() - dt
+        return timedelta(0) <= age <= window
     except Exception:
         return False
 
 
 def invoice_editable_by_user(inv, user) -> bool:
-    """Return whether ``user`` may edit ``inv`` under the invoice edit policy."""
+    """Apply the role and age policy for invoice editing.
+
+    Administrators retain unrestricted edit access. Receptionists and nurses
+    may edit an unlocked invoice only during its first 24 hours.
+    """
     try:
-        if _invoice_is_locked(inv):
-            return False
         role = (getattr(user, "role", None) or "").strip().lower()
         if role == "admin":
             return True
+        if role not in {"reception", "receptionist", "nurse"}:
+            return False
+        if _invoice_is_locked(inv):
+            return False
         return invoice_editable_now(inv)
     except Exception:
         return False
