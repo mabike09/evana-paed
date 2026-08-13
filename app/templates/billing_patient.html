@@ -78,12 +78,14 @@
                     </button>
                   </li>
                   {% endif %}
-                  {% if can_admin_invoice %}
+                  {% if r.can_edit %}
                   <li>
                     <a class="dropdown-item" href="{{ url_for('billing.invoice_edit', invoice_id=inv.id) }}">
                       Edit Invoice
                     </a>
                   </li>
+                  {% endif %}
+                  {% if can_admin_invoice %}
                   <li><hr class="dropdown-divider"></li>
                   <li>
                     <button class="dropdown-item text-danger" type="button" data-bs-toggle="modal" data-bs-target="#deleteInvoiceModal-{{ inv.id }}">

@@ -18,7 +18,7 @@ from ..models import (
     Item, ItemPrice,
     BillingQueue, ClinicianQueue
 )
-from ..utils import generate_invoice_number, generate_receipt_number
+from ..utils import generate_invoice_number, generate_receipt_number, invoice_editable_by_user
 from ..pdf import invoice_pdf_response, payment_pdf_response
 from ..timezone import eat_now
 
@@ -712,9 +712,13 @@ def api_search_catalog():
 # ------------------------------------------------------------------------------
 @bp.route("/invoices/<int:invoice_id>/edit", methods=["GET", "POST"])
 @login_required
-@roles_required("admin")
+@roles_required("reception", "nurse", "admin")
 def invoice_edit(invoice_id):
     inv = Invoice.query.options(joinedload(Invoice.lines)).get_or_404(invoice_id)
+
+    if not invoice_editable_by_user(inv, current_user):
+        flash("Reception and nursing staff can edit invoices only within 24 hours of creation.", "danger")
+        return redirect(url_for("billing.patient_billing", patient_id=inv.patient_id))
 
     next_target = (request.values.get("next") or "").strip()
     if not next_target.startswith("/"):
@@ -1092,6 +1096,7 @@ def patient_billing(patient_id):
 
         rows.append({
             "obj": inv,
+            "can_edit": invoice_editable_by_user(inv, current_user),
             "claim": claim,
             "number": getattr(inv, "number", None) or f"INV-{inv.id}",
             "issue_date": getattr(inv, "issue_date", None),
