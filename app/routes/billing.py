@@ -812,17 +812,24 @@ def invoice_edit(invoice_id):
         except Exception:
             pass
 
-        try:
-            _ensure_pharmacy_queue_for_paid_invoice(
-                inv,
-                inv.patient_id,
-                "Paid invoice updated — ready for pharmacy dispensing",
-            )
-        except Exception:
-            current_app.logger.exception("Failed ensuring PHARMACY queue entry after invoice edit")
+        # Keep the invoice update and its workflow routing atomic.  Previously a
+        # queue error was swallowed here, which allowed the drug line to be
+        # committed without making it visible to Pharmacy.
+        pharmacy_queue = _ensure_pharmacy_queue_for_paid_invoice(
+            inv,
+            inv.patient_id,
+            "Paid invoice updated — ready for pharmacy dispensing",
+        )
 
         db.session.commit()
         flash("Invoice updated (total recalculated).", "success")
+        if pharmacy_queue is not None:
+            flash("Paid drug invoice is ready in the Pharmacy queue.", "success")
+        elif _invoice_has_drug_lines(inv.id) and not _invoice_is_fully_paid(inv):
+            flash(
+                "Drug added. Collect the outstanding invoice balance to release it to Pharmacy.",
+                "warning",
+            )
     except Exception:
         current_app.logger.exception("Invoice edit failed")
         db.session.rollback()
