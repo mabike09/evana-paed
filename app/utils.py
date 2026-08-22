@@ -1,5 +1,6 @@
 # app/utils.py
 from datetime import datetime, timedelta, date
+import re
 from decimal import Decimal
 from flask import current_app
 from sqlalchemy import func
@@ -24,9 +25,19 @@ def generate_invoice_number(issue_date: date | None = None) -> str:
     """INV-YYMM-#### (no branch)."""
     d = issue_date or eat_today()
     yymm = _yymm(d)
-    like = f"INV-{yymm}-%"
-    seq = (db.session.query(func.count(Invoice.id))
-           .filter(Invoice.number.like(like)).scalar() or 0) + 1
+    prefix = f"INV-{yymm}-"
+    numbers = (db.session.query(Invoice.number)
+               .filter(Invoice.number.like(f"{prefix}%")).all())
+    # Counting invoices can reuse a number after an invoice is deleted or after
+    # historical data is imported with a gap.  Advance from the greatest valid
+    # sequence instead, preserving the database's unique-number invariant.
+    pattern = re.compile(rf"^{re.escape(prefix)}(\d+)$")
+    sequences = (
+        int(match.group(1))
+        for (number,) in numbers
+        if number and (match := pattern.fullmatch(number))
+    )
+    seq = max(sequences, default=0) + 1
     return f"INV-{yymm}-{seq:04d}"
 
 def generate_receipt_number(pay_date: date | None = None) -> str:
