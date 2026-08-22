@@ -121,6 +121,45 @@ class PaidInvoicePharmacyQueueTests(unittest.TestCase):
 
         self.assertIsNotNone(self._ensure_queue())
 
+    def test_pharmacy_invoice_goes_to_billing_then_returns_after_payment(self):
+        pharmacy_queue = BillingQueue(
+            patient_id=self.patient_id,
+            status="Open",
+            kind="PHARMACY",
+            description="Sent directly from patient list",
+        )
+        db.session.add(pharmacy_queue)
+        db.session.commit()
+
+        with patch.object(billing, "current_user", SimpleNamespace(id=7)):
+            billing_queue = billing._route_pharmacy_invoice_to_billing(
+                self.invoice,
+                self.patient_id,
+            )
+        db.session.commit()
+
+        self.assertIsNotNone(billing_queue)
+        self.assertEqual(pharmacy_queue.status, "Closed")
+        self.assertEqual(billing_queue.kind, "BILLING")
+        self.assertEqual(billing_queue.status, "Open")
+        self.assertIsNone(self._ensure_queue())
+
+        db.session.add(
+            Payment(
+                invoice_id=self.invoice.id,
+                payment_date="2026-08-22",
+                amount=Decimal("10000.00"),
+                method="Cash",
+            )
+        )
+        db.session.commit()
+
+        returned_queue = self._ensure_queue()
+        db.session.commit()
+        self.assertIsNotNone(returned_queue)
+        self.assertEqual(returned_queue.kind, "PHARMACY")
+        self.assertEqual(returned_queue.status, "Open")
+
 
 if __name__ == "__main__":
     unittest.main()
