@@ -478,6 +478,50 @@ def _ensure_pharmacy_queue_for_paid_invoice(inv: Invoice, patient_id: int, descr
     db.session.add(pharm_q)
     return pharm_q
 
+
+def _route_pharmacy_invoice_to_billing(inv: Invoice, patient_id: int):
+    """Move an unpaid cash drug invoice from Pharmacy to Billing."""
+    if not _invoice_has_drug_lines(inv.id) or _invoice_is_fully_paid(inv):
+        return None
+
+    patient = db.session.get(Patient, patient_id)
+    payer_type = (getattr(inv, "payer_type", "") or "").strip().lower()
+    insurance_provider = (getattr(patient, "insurance_provider", "") or "").strip().lower()
+    if payer_type == "insurance" or (not payer_type and insurance_provider not in {"", "cash"}):
+        return None
+
+    visit_id = getattr(inv, "visit_id", None)
+    pharmacy_query = BillingQueue.query.filter_by(status="Open", kind="PHARMACY")
+    if visit_id is not None:
+        pharmacy_query = pharmacy_query.filter_by(visit_id=visit_id)
+    else:
+        pharmacy_query = pharmacy_query.filter_by(patient_id=patient_id, visit_id=None)
+    pharmacy_queue = pharmacy_query.order_by(BillingQueue.id.desc()).first()
+    if pharmacy_queue is None:
+        return None
+
+    pharmacy_queue.status = "Closed"
+    pharmacy_queue.description = "Invoice prepared in pharmacy — awaiting payment in Billing"
+
+    billing_query = BillingQueue.query.filter_by(status="Open", kind="BILLING")
+    if visit_id is not None:
+        billing_query = billing_query.filter_by(visit_id=visit_id)
+    else:
+        billing_query = billing_query.filter_by(patient_id=patient_id, visit_id=None)
+    billing_queue = billing_query.order_by(BillingQueue.id.desc()).first()
+    if billing_queue is None:
+        billing_queue = BillingQueue(
+            patient_id=patient_id,
+            visit_id=visit_id,
+            status="Open",
+            kind="BILLING",
+            description="Drug invoice prepared in pharmacy — payment required",
+            added_by=getattr(current_user, "id", None),
+        )
+        db.session.add(billing_queue)
+
+    return billing_queue
+
 def _normalized_kind(proc_id=None, item_id=None):
     if item_id:
         return "drug"
@@ -820,6 +864,8 @@ def invoice_edit(invoice_id):
             inv.patient_id,
             "Paid invoice updated — ready for pharmacy dispensing",
         )
+        if next_target.startswith("/pharmacy"):
+            _route_pharmacy_invoice_to_billing(inv, inv.patient_id)
 
         db.session.commit()
         flash("Invoice updated (total recalculated).", "success")
@@ -827,7 +873,7 @@ def invoice_edit(invoice_id):
             flash("Paid drug invoice is ready in the Pharmacy queue.", "success")
         elif _invoice_has_drug_lines(inv.id) and not _invoice_is_fully_paid(inv):
             flash(
-                "Drug added. Collect the outstanding invoice balance to release it to Pharmacy.",
+                "Drug invoice sent to Billing for payment; full payment will return it to Pharmacy.",
                 "warning",
             )
     except Exception:
