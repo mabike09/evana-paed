@@ -1050,7 +1050,7 @@ def patients_list():
 
 @bp.get("/patients/visits")
 @login_required
-@roles_required("reception", "nurse", "admin")
+@roles_required("reception", "nurse", "accountant", "admin")
 def patient_visits():
     visits = (
         Visit.query

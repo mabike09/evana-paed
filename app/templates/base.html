@@ -39,7 +39,7 @@
               <a class="nav-link dropdown-toggle" href="#" data-bs-toggle="dropdown">Patients</a>
               <ul class="dropdown-menu">
                 <li><a class="dropdown-item" href="{{ url_for('patients.patients_list') }}">Patient List</a></li>
-                {% if current_user.role in ['reception','nurse','admin'] %}
+                {% if current_user.role in ['reception','nurse','accountant','admin'] %}
                   <li><a class="dropdown-item" href="{{ url_for('patients.patient_visits') }}">Visits</a></li>
                 {% endif %}
               </ul>
