@@ -9,6 +9,35 @@ from .utils import within_24h, has_endpoint
 from config import Config
 
 
+def _normalize_invoice_payer_values():
+    """Normalize legacy payer values without rewriting already-normalized rows.
+
+    This runs in every application worker.  Restricting the updates to values
+    that actually differ is important for SQLite deployments: an UPDATE whose
+    predicate also matches ``Cash`` and ``Insurance`` obtains a write lock and
+    reports every invoice as changed, even when the stored value is identical.
+    """
+    fixed_insurance = db.session.execute(
+        text(
+            "UPDATE invoice SET payer_type = 'Insurance' "
+            "WHERE lower(trim(payer_type)) = 'insurance' "
+            "AND payer_type != 'Insurance'"
+        )
+    ).rowcount or 0
+    fixed_cash = db.session.execute(
+        text(
+            "UPDATE invoice SET payer_type = 'Cash' "
+            "WHERE lower(trim(payer_type)) = 'cash' "
+            "AND payer_type != 'Cash'"
+        )
+    ).rowcount or 0
+    if fixed_insurance or fixed_cash:
+        db.session.commit()
+    else:
+        db.session.rollback()
+    return fixed_insurance, fixed_cash
+
+
 def create_app():
     BASE_DIR = os.path.dirname(__file__)        # .../evana-paed/app
     PROJECT_DIR = os.path.dirname(BASE_DIR)     # .../evana-paed
@@ -168,19 +197,11 @@ def create_app():
         if getattr(app, "_invoice_payer_normalized", False):
             return
         try:
-            fixed_insurance = db.session.execute(
-                text("UPDATE invoice SET payer_type = 'Insurance' WHERE lower(payer_type) = 'insurance'")
-            ).rowcount or 0
-            fixed_cash = db.session.execute(
-                text("UPDATE invoice SET payer_type = 'Cash' WHERE lower(payer_type) = 'cash'")
-            ).rowcount or 0
+            fixed_insurance, fixed_cash = _normalize_invoice_payer_values()
             if fixed_insurance or fixed_cash:
-                db.session.commit()
                 current_app.logger.info(
                     f"Normalized invoice payer_type values (Insurance={fixed_insurance}, Cash={fixed_cash})"
                 )
-            else:
-                db.session.rollback()
         except Exception as e:
             db.session.rollback()
             app.logger.warning(f"Invoice payer_type normalization skipped: {e}")
