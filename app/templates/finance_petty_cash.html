@@ -7,8 +7,6 @@
     <div class="text-muted">Track petty cash float, top-ups, returns, expenditures, approvals, and audit history.</div>
   </div>
   <div class="d-flex gap-2">
-    <a class="btn btn-outline-secondary" href="{{ url_for('finance.petty_cash_ledger', start_date=filters.start_date, end_date=filters.end_date, category=filters.category, transaction_type=filters.transaction_type, voucher_number=filters.voucher_number, payee=filters.payee, status=filters.status, entered_by=filters.entered_by, approved_by=filters.approved_by, export='excel') }}">Export Excel/CSV</a>
-    <a class="btn btn-outline-secondary" href="{{ url_for('finance.petty_cash_ledger', start_date=filters.start_date, end_date=filters.end_date, category=filters.category, transaction_type=filters.transaction_type, voucher_number=filters.voucher_number, payee=filters.payee, status=filters.status, entered_by=filters.entered_by, approved_by=filters.approved_by, export='pdf') }}">Printable Ledger PDF</a>
     {% if can_manage_petty_cash %}
       <a class="btn btn-outline-primary" href="{{ url_for('finance.petty_cash_reconciliation') }}">Reconciliation</a>
     {% endif %}
@@ -122,7 +120,12 @@
           <div class="col-md-2"><label class="form-label">Status</label><select class="form-select" name="status"><option value="">All</option><option value="unreconciled" {% if filters.status == 'unreconciled' %}selected{% endif %}>Unreconciled</option><option value="reconciled" {% if filters.status == 'reconciled' %}selected{% endif %}>Reconciled</option><option value="missing_attachment" {% if filters.status == 'missing_attachment' %}selected{% endif %}>Missing attachment</option><option value="unaccounted_advance" {% if filters.status == 'unaccounted_advance' %}selected{% endif %}>Unaccounted advance</option></select></div>
           <div class="col-md-2"><label class="form-label">Entered by</label><input class="form-control" type="text" name="entered_by" value="{{ filters.entered_by }}"></div>
           <div class="col-md-2"><label class="form-label">Approved by</label><input class="form-control" type="text" name="approved_by" value="{{ filters.approved_by }}"></div>
-          <div class="col-md-12 d-flex gap-2"><button class="btn btn-primary" type="submit">Apply filters</button><a class="btn btn-outline-secondary" href="{{ url_for('finance.petty_cash_ledger') }}">Reset</a></div>
+          <div class="col-md-12 d-flex flex-wrap gap-2">
+            <button class="btn btn-primary" type="submit">Apply filters</button>
+            <a class="btn btn-outline-secondary" href="{{ url_for('finance.petty_cash_ledger') }}">Reset</a>
+            <button class="btn btn-outline-success" type="submit" name="export" value="excel">Export Excel</button>
+            <button class="btn btn-outline-danger" type="submit" name="export" value="pdf">Export PDF</button>
+          </div>
         </form>
       </div>
     </div>

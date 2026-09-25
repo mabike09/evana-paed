@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import csv
 import io
 import json
 import os
@@ -10,6 +9,13 @@ from decimal import Decimal
 
 from flask import Blueprint, Response, current_app, flash, redirect, render_template, request, send_file, url_for
 from flask_login import current_user, login_required
+from openpyxl import Workbook
+from openpyxl.styles import Alignment, Font, PatternFill
+from openpyxl.utils import get_column_letter
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import A4, landscape
+from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy import func, inspect, text
 from werkzeug.utils import secure_filename
@@ -205,6 +211,87 @@ def _log_action(action: str, record_type: str, record_id: int | None, changes: d
             changes_json=json.dumps(changes, default=str),
         )
     )
+
+
+def _petty_cash_excel(ledger_rows: list[dict], filters: dict) -> io.BytesIO:
+    """Build a real Excel workbook for the currently filtered ledger."""
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = "Petty Cash Ledger"
+    sheet.append(["Petty Cash Ledger"])
+    sheet.append([f"Date range: {filters['start_date']} to {filters['end_date']}"])
+    sheet.append([])
+    headers = [
+        "Date", "Voucher Number", "Receipt Number", "Transaction Type", "Amount",
+        "Purpose", "Category", "Payee", "Entered By", "Approved By", "Previous Balance",
+        "Amount In", "Amount Out", "New Balance",
+    ]
+    sheet.append(headers)
+    for cell in sheet[4]:
+        cell.font = Font(bold=True, color="FFFFFF")
+        cell.fill = PatternFill("solid", fgColor="0D6EFD")
+        cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+
+    for row in ledger_rows:
+        txn = row["transaction"]
+        sheet.append([
+            txn.date, txn.voucher_number or "", txn.receipt_number or "", txn.transaction_type,
+            float(txn.amount), txn.purpose, txn.expense_category or "", txn.payee or "",
+            txn.entered_by, txn.approved_by or "", float(row["previous_balance"]),
+            float(row["amount_in"]), float(row["amount_out"]), float(row["new_balance"]),
+        ])
+
+    for row_number in range(5, sheet.max_row + 1):
+        for column_number in (5, 11, 12, 13, 14):
+            sheet.cell(row_number, column_number).number_format = '#,##0.00'
+    widths = [13, 18, 18, 18, 15, 36, 24, 24, 18, 18, 18, 15, 15, 18]
+    for index, width in enumerate(widths, start=1):
+        sheet.column_dimensions[get_column_letter(index)].width = width
+    sheet.freeze_panes = "A5"
+    sheet.auto_filter.ref = f"A4:N{max(sheet.max_row, 4)}"
+
+    output = io.BytesIO()
+    workbook.save(output)
+    output.seek(0)
+    return output
+
+
+def _petty_cash_pdf(ledger_rows: list[dict], filters: dict, metrics: dict) -> io.BytesIO:
+    """Build a downloadable PDF for the currently filtered ledger."""
+    output = io.BytesIO()
+    document = SimpleDocTemplate(
+        output, pagesize=landscape(A4), rightMargin=18, leftMargin=18, topMargin=18, bottomMargin=18
+    )
+    styles = getSampleStyleSheet()
+    elements = [
+        Paragraph("Petty Cash Ledger", styles["Title"]),
+        Paragraph(f"Date range: {filters['start_date']} to {filters['end_date']}", styles["Normal"]),
+        Paragraph(f"Current cash on hand: UGX {metrics['current_balance']:,.2f}", styles["Normal"]),
+        Spacer(1, 10),
+    ]
+    data = [["Date", "Voucher", "Receipt", "Type", "Purpose", "Category", "Payee", "Previous", "In", "Out", "New"]]
+    for row in ledger_rows:
+        txn = row["transaction"]
+        data.append([
+            txn.date, txn.voucher_number or "—", txn.receipt_number or "—",
+            txn.transaction_type.replace("_", " ").title(), txn.purpose, txn.expense_category or "—",
+            txn.payee or "—", f"{row['previous_balance']:,.2f}", f"{row['amount_in']:,.2f}",
+            f"{row['amount_out']:,.2f}", f"{row['new_balance']:,.2f}",
+        ])
+    table = Table(data, repeatRows=1, colWidths=[48, 52, 52, 50, 120, 80, 75, 65, 60, 60, 65])
+    table.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0D6EFD")),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("GRID", (0, 0), (-1, -1), 0.4, colors.grey),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("FONTSIZE", (0, 0), (-1, -1), 6.5),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#F3F6FA")]),
+    ]))
+    elements.append(table)
+    document.build(elements)
+    output.seek(0)
+    return output
 
 
 def _ap_attachment_folder() -> str:
@@ -1223,44 +1310,19 @@ def petty_cash_ledger():
     audits = PettyCashAuditLog.query.order_by(PettyCashAuditLog.created_at.desc()).limit(15).all()
 
     export = request.args.get("export")
-    if export in {"excel", "csv"}:
-        out = io.StringIO()
-        writer = csv.writer(out)
-        writer.writerow([
-            "Date", "Voucher Number", "Receipt Number", "Transaction Type", "Amount", "Purpose",
-            "Category", "Payee", "Entered By", "Approved By", "Prev Balance", "Amount In", "Amount Out", "New Balance"
-        ])
-        for row in ledger_rows:
-            txn = row["transaction"]
-            writer.writerow([
-                txn.date, txn.voucher_number, txn.receipt_number, txn.transaction_type, txn.amount, txn.purpose,
-                txn.expense_category, txn.payee, txn.entered_by, txn.approved_by,
-                row["previous_balance"], row["amount_in"], row["amount_out"], row["new_balance"],
-            ])
-        return Response(
-            out.getvalue(),
-            mimetype="text/csv",
-            headers={"Content-Disposition": "attachment; filename=petty_cash_ledger.csv"},
+    if export == "excel":
+        return send_file(
+            _petty_cash_excel(ledger_rows, filters),
+            as_attachment=True,
+            download_name="petty_cash_ledger.xlsx",
+            mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         )
     if export == "pdf":
-        html = render_template(
-            "finance_petty_cash_pdf.html",
-            ledger_rows=ledger_rows,
-            filters=filters,
-            metrics=metrics,
-        )
-        try:
-            from xhtml2pdf import pisa
-        except Exception:
-            return Response(html, mimetype="text/html")
-        pdf_io = io.BytesIO()
-        result = pisa.CreatePDF(src=html, dest=pdf_io, encoding="utf-8")
-        if getattr(result, "err", False):
-            return Response(html, mimetype="text/html")
-        return Response(
-            pdf_io.getvalue(),
+        return send_file(
+            _petty_cash_pdf(ledger_rows, filters, metrics),
+            as_attachment=True,
+            download_name="petty_cash_ledger.pdf",
             mimetype="application/pdf",
-            headers={"Content-Disposition": "attachment; filename=petty_cash_ledger.pdf"},
         )
 
     return render_template(
