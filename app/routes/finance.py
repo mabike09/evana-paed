@@ -100,6 +100,91 @@ COST_OF_SERVICE_CATEGORIES = {
 }
 
 
+def _normalize_expense_category(name: str | None) -> str:
+    return " ".join((name or "").replace("&", " and ").split()).casefold()
+
+
+def _income_statement_expenses(start_date: str, end_date: str) -> tuple[Decimal, Decimal, list[dict]]:
+    """Classify recorded costs consistently, regardless of their source ledger."""
+    drug_cost = Decimal("0.00")
+    lab_supplies_cost = Decimal("0.00")
+    operating_totals = defaultdict(lambda: Decimal("0.00"))
+    operating_names = {}
+
+    def add_cost(category: str | None, amount: Decimal) -> None:
+        nonlocal drug_cost, lab_supplies_cost
+        key = _normalize_expense_category(category)
+        amount = _money(amount)
+        if key in COST_OF_SERVICE_CATEGORIES:
+            if key in {"laboratory supplies", "lab supplies"}:
+                lab_supplies_cost += amount
+            else:
+                drug_cost += amount
+        else:
+            key = key or "uncategorized"
+            operating_names.setdefault(key, " ".join((category or "").split()) or "Uncategorized")
+            operating_totals[key] += amount
+
+    tracker_rows = db.session.query(
+        ExpenseCategory.name,
+        func.coalesce(func.sum(ExpenseEntry.amount), 0),
+    ).select_from(ExpenseEntry).outerjoin(
+        ExpenseCategory, ExpenseEntry.category_id == ExpenseCategory.id,
+    ).filter(
+        ExpenseEntry.expense_date >= start_date,
+        ExpenseEntry.expense_date <= end_date,
+    ).group_by(ExpenseCategory.name).all()
+    for category, amount in tracker_rows:
+        add_cost(category, amount)
+
+    # Line categories take precedence; a blank line category inherits the bill's.
+    line_category = func.coalesce(
+        func.nullif(func.trim(APBillLine.expense_category), ""), APBill.expense_category,
+    )
+    ap_line_rows = db.session.query(
+        line_category,
+        func.coalesce(func.sum(APBillLine.amount), 0),
+    ).join(APBill, APBillLine.bill_id == APBill.id).filter(
+        APBill.invoice_date >= start_date,
+        APBill.invoice_date <= end_date,
+    ).group_by(line_category).all()
+    for category, amount in ap_line_rows:
+        add_cost(category, amount)
+
+    # Itemization is optional. Count an unitemized bill once using its header;
+    # do not also count its payments, which only settle the existing payable.
+    ap_header_rows = db.session.query(
+        APBill.expense_category,
+        func.coalesce(func.sum(APBill.invoice_total), 0),
+    ).filter(
+        APBill.invoice_date >= start_date,
+        APBill.invoice_date <= end_date,
+        ~APBill.lines.any(),
+    ).group_by(APBill.expense_category).all()
+    for category, amount in ap_header_rows:
+        add_cost(category, amount)
+
+    # Cash-in movements are float transfers/returns. Advances are not settled
+    # spending: their issued amount can include cash that will be returned.
+    petty_cash_rows = db.session.query(
+        PettyCashTransaction.expense_category,
+        func.coalesce(func.sum(PettyCashTransaction.amount), 0),
+    ).filter(
+        PettyCashTransaction.date >= start_date,
+        PettyCashTransaction.date <= end_date,
+        PettyCashTransaction.transaction_type == "cash_out",
+        PettyCashTransaction.is_advance.is_(False),
+    ).group_by(PettyCashTransaction.expense_category).all()
+    for category, amount in petty_cash_rows:
+        add_cost(category, amount)
+
+    operating_expenses = [
+        {"name": operating_names[key], "amount": _money(amount)}
+        for key, amount in sorted(operating_totals.items())
+    ]
+    return _money(drug_cost), _money(lab_supplies_cost), operating_expenses
+
+
 ASSET_CATEGORIES = ["Medical equipment", "IT equipment", "Furniture", "Office equipment", "Vehicles/motorcycles", "Leasehold improvements"]
 ASSET_FUNDING_SOURCES = ["Cash", "Loan", "Grant"]
 ASSET_OWNERSHIP_STATUSES = ["Owned", "Leased", "Financed"]
@@ -1119,45 +1204,7 @@ def income_statement():
         Invoice.payer_type == "Insurance",
     ).scalar())
 
-    drug_cost = _money(db.session.query(func.coalesce(func.sum(APBillLine.amount), 0)).join(APBill).filter(
-        APBill.invoice_date >= start_raw,
-        APBill.invoice_date <= end_raw,
-        func.lower(APBillLine.expense_category).in_(["drug supplies", "drugs and medical supplies", "drugs"]),
-    ).scalar())
-
-    lab_supplies_cost = _money(db.session.query(func.coalesce(func.sum(APBillLine.amount), 0)).join(APBill).filter(
-        APBill.invoice_date >= start_raw,
-        APBill.invoice_date <= end_raw,
-        func.lower(APBillLine.expense_category).in_(["laboratory supplies", "lab supplies"]),
-    ).scalar())
-
-    operating_expense_totals = defaultdict(lambda: Decimal("0.00"))
-
-    tracker_expense_rows = db.session.query(
-        ExpenseCategory.name,
-        func.coalesce(func.sum(ExpenseEntry.amount), 0),
-    ).join(ExpenseEntry, ExpenseEntry.category_id == ExpenseCategory.id).filter(
-        ExpenseEntry.expense_date >= start_raw,
-        ExpenseEntry.expense_date <= end_raw,
-    ).group_by(ExpenseCategory.name).all()
-    for name, total in tracker_expense_rows:
-        operating_expense_totals[name or "Uncategorized"] += _money(total)
-
-    ap_operating_expense_rows = db.session.query(
-        APBillLine.expense_category,
-        func.coalesce(func.sum(APBillLine.amount), 0),
-    ).join(APBill).filter(
-        APBill.invoice_date >= start_raw,
-        APBill.invoice_date <= end_raw,
-        ~func.lower(APBillLine.expense_category).in_(COST_OF_SERVICE_CATEGORIES),
-    ).group_by(APBillLine.expense_category).all()
-    for name, total in ap_operating_expense_rows:
-        operating_expense_totals[name or "Uncategorized"] += _money(total)
-
-    operating_expenses = [
-        {"name": name, "amount": amount}
-        for name, amount in sorted(operating_expense_totals.items(), key=lambda row: row[0].lower())
-    ]
+    drug_cost, lab_supplies_cost, operating_expenses = _income_statement_expenses(start_raw, end_raw)
     total_operating_expenses = _money(sum((row["amount"] for row in operating_expenses), Decimal("0.00")))
 
     total_revenue = _money(cash_revenue + insurance_revenue)
