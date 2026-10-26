@@ -4,7 +4,7 @@
 <div class="d-flex justify-content-between align-items-center mb-3">
   <h3 class="mb-0">Income Statement</h3>
 </div>
-<form class="row g-2 mb-4" method="get">
+<form id="income-statement-filters" class="row g-2 mb-2" method="get">
   <div class="col-md-3">
     <label class="form-label">Period</label>
     <select class="form-select" name="period">
@@ -26,6 +26,7 @@
     <button class="btn btn-primary w-100" type="submit">Apply Filter</button>
   </div>
 </form>
+<p class="text-muted small mb-4">Reporting period: <strong>{{ start_date.strftime('%d/%m/%Y') }} &ndash; {{ end_date.strftime('%d/%m/%Y') }}</strong></p>
 
 <div class="card">
   <div class="card-body">
@@ -54,6 +55,15 @@
     <h5 class="mt-4">Margin Ratios</h5>
     <div class="d-flex justify-content-between"><span>- Gross profit margin</span><strong>{{ "{:,.2f}".format(gross_profit_margin) }}%</strong></div>
     <div class="d-flex justify-content-between"><span>- Net income margin</span><strong>{{ "{:,.2f}".format(net_income_margin) }}%</strong></div>
+    <p class="text-muted small mb-0 mt-3">Includes Expense Tracker entries, supplier invoices by invoice date, and petty-cash expenses. Enter each expense once across these sources. Record settled petty-cash advance expenses in Expense Tracker to include them.</p>
   </div>
 </div>
+<script>
+  const statementFilters = document.getElementById('income-statement-filters');
+  statementFilters.querySelectorAll('input[type="date"]').forEach(input => {
+    input.addEventListener('change', () => {
+      statementFilters.elements.period.value = 'custom';
+    });
+  });
+</script>
 {% endblock %}
