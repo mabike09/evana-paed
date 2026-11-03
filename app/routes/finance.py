@@ -5,7 +5,7 @@ import json
 import os
 from collections import defaultdict
 from datetime import date, datetime, timedelta
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 
 from flask import Blueprint, Response, current_app, flash, redirect, render_template, request, send_file, url_for
 from flask_login import current_user, login_required
@@ -1354,7 +1354,6 @@ def petty_cash_ledger():
     ledger_rows, filtered_balance = _build_ledger_rows(transactions, opening_balance=opening_balance)
     metrics = _summary_metrics(ledger_rows, transactions)
     locks = PettyCashPeriodLock.query.order_by(PettyCashPeriodLock.locked_until.desc()).all()
-    audits = PettyCashAuditLog.query.order_by(PettyCashAuditLog.created_at.desc()).limit(15).all()
 
     export = request.args.get("export")
     if export == "excel":
@@ -1386,9 +1385,131 @@ def petty_cash_ledger():
         can_record_petty_cash_in=_can_record_petty_cash_in(),
         can_record_petty_cash_out=_can_record_petty_cash_out(),
         locks=locks,
-        audits=audits,
+        ledger_filters={key: str(value or "") for key, value in filters.items()},
+        locked_until=locks[0].locked_until if locks else None,
         low_balance_threshold=LOW_BALANCE_THRESHOLD,
     )
+
+
+def _petty_cash_change_allowed(txn) -> bool:
+    if txn.reconciliation_id or txn.reconciled_at:
+        flash("Reconciled petty cash entries cannot be edited or deleted.", "warning")
+        return False
+    return _ensure_open_period(_parse_date(txn.date, date.min))
+
+
+def _petty_cash_snapshot(txn) -> dict:
+    return {column.name: getattr(txn, column.name) for column in PettyCashTransaction.__table__.columns}
+
+
+def _petty_cash_balances_valid() -> bool:
+    # Recalculate the complete ledger, including entries outside the active filter.
+    rows, _ = _build_ledger_rows(_all_transactions().all())
+    if any(row["new_balance"] < 0 for row in rows):
+        flash("This change would create a negative petty cash running balance.", "danger")
+        return False
+    return True
+
+
+@bp.route("/finance/petty-cash/<int:transaction_id>/edit", methods=["GET", "POST"])
+@login_required
+@roles_required("admin")
+def petty_cash_edit(transaction_id: int):
+    txn = db.get_or_404(PettyCashTransaction, transaction_id)
+    ledger_filters = {key: str(value or "") for key, value in _get_filters().items()}
+    ledger_url = url_for("finance.petty_cash_ledger", **ledger_filters)
+    if not _petty_cash_change_allowed(txn):
+        return redirect(ledger_url)
+
+    if request.method == "POST":
+        before = _petty_cash_snapshot(txn)
+        txn_date = _parse_date(request.form.get("date"))
+        transaction_type = (request.form.get("transaction_type") or "").strip()
+        action_mode = (request.form.get("action_mode") or "transaction").strip()
+        purpose = (request.form.get("purpose") or "").strip()
+        try:
+            amount = _money(request.form.get("amount"))
+            valid_amount = amount.is_finite() and 0 < amount <= Decimal("9999999999.99")
+        except (InvalidOperation, ValueError):
+            valid_amount = False
+
+        error = None
+        if not txn_date:
+            error = "Enter a valid transaction date."
+        elif transaction_type not in PETTY_CASH_TXN_TYPES:
+            error = "Transaction type must be cash in or cash out."
+        elif action_mode not in {"transaction", "initial_float", "top_up", "cash_returned"}:
+            error = "Choose a valid petty cash action."
+        elif not valid_amount:
+            error = "Enter a valid amount greater than zero (maximum UGX 9,999,999,999.99)."
+        elif not purpose or len(purpose) > 255:
+            error = "Purpose is required and must be at most 255 characters."
+        for field, limit in {"voucher_number": 64, "receipt_number": 64, "expense_category": 80,
+                             "payee": 150, "approved_by": 150}.items():
+            if len((request.form.get(field) or "").strip()) > limit:
+                error = f"{field.replace('_', ' ').capitalize()} must be at most {limit} characters."
+        if error:
+            flash(error, "warning")
+        elif _ensure_open_period(txn_date):
+            txn.date = str(txn_date)
+            txn.transaction_type = transaction_type
+            txn.action_mode = action_mode
+            txn.amount = amount
+            txn.purpose = txn.description = purpose
+            for field in ("voucher_number", "receipt_number", "expense_category", "payee", "notes"):
+                setattr(txn, field, (request.form.get(field) or "").strip())
+            if action_mode != "transaction":
+                txn.transaction_type = "cash_in"
+                txn.expense_category = "miscellaneous"
+                txn.voucher_number = txn.receipt_number = ""
+            approved_by = (request.form.get("approved_by") or "").strip()
+            if approved_by != txn.approved_by:
+                txn.approval_timestamp = eat_now() if approved_by else None
+            txn.approved_by = approved_by
+            txn.is_advance = request.form.get("is_advance") == "on"
+            txn.is_accounted = request.form.get("is_accounted") == "on"
+            if _petty_cash_balances_valid():
+                try:
+                    attachment_path = _save_attachment(request.files.get("attachment"))
+                except ValueError as exc:
+                    flash(str(exc), "warning")
+                else:
+                    if attachment_path:
+                        txn.attachment_path = attachment_path
+                    _log_action("update", "transaction", txn.id,
+                                {"before": before, "after": _petty_cash_snapshot(txn)})
+                    db.session.commit()
+                    flash("Petty cash transaction updated.", "success")
+                    return redirect(ledger_url)
+            db.session.rollback()
+
+    categories = _expense_category_names()
+    # Keep legacy or inactive category values available when correcting an entry.
+    if txn.expense_category and txn.expense_category not in categories:
+        categories.append(txn.expense_category)
+    values = request.form if request.method == "POST" else _petty_cash_snapshot(txn)
+    return render_template("finance_petty_cash_edit.html", txn=txn, values=values,
+                           categories=categories, ledger_url=ledger_url)
+
+
+@bp.route("/finance/petty-cash/<int:transaction_id>/delete", methods=["POST"])
+@login_required
+@roles_required("admin")
+def petty_cash_delete(transaction_id: int):
+    txn = db.get_or_404(PettyCashTransaction, transaction_id)
+    ledger_filters = {key: str(value or "") for key, value in _get_filters().items()}
+    ledger_url = url_for("finance.petty_cash_ledger", **ledger_filters)
+    if not _petty_cash_change_allowed(txn):
+        return redirect(ledger_url)
+    before = _petty_cash_snapshot(txn)
+    db.session.delete(txn)
+    if not _petty_cash_balances_valid():
+        db.session.rollback()
+        return redirect(ledger_url)
+    _log_action("delete", "transaction", transaction_id, {"before": before})
+    db.session.commit()
+    flash("Petty cash transaction deleted.", "success")
+    return redirect(ledger_url)
 
 
 @bp.route("/finance/petty-cash/reconciliation", methods=["GET", "POST"])
