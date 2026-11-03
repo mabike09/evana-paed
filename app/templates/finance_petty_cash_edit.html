@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}Edit petty cash entry{% endblock %}
+{% block content %}
+<h2>Edit petty cash entry #{{ txn.id }}</h2>
+<form method="post" enctype="multipart/form-data" class="card card-body row g-3">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <div class="col-md-6">
+    <label class="form-label" for="action_mode">Action</label>
+    <select class="form-select" name="action_mode" id="action_mode">
+      {% for value, label in [('transaction', 'Normal transaction'), ('initial_float', 'Set initial float'), ('top_up', 'Top up petty cash'), ('cash_returned', 'Record cash returned')] %}
+        <option value="{{ value }}" {% if values.get('action_mode') == value %}selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+    </select>
+    <div class="form-text">Float, top-ups, and returns are recorded as cash in under miscellaneous.</div>
+  </div>
+  <div class="col-md-6"><label class="form-label" for="date">Date</label><input class="form-control" id="date" type="date" name="date" value="{{ values.get('date', '') }}" required></div>
+  <div class="col-md-6">
+    <label class="form-label" for="transaction_type">Transaction type</label>
+    <select class="form-select" name="transaction_type" id="transaction_type">
+      {% for value in ['cash_in', 'cash_out'] %}<option value="{{ value }}" {% if values.get('transaction_type') == value %}selected{% endif %}>{{ value|replace('_', ' ')|title }}</option>{% endfor %}
+    </select>
+  </div>
+  <div class="col-md-6"><label class="form-label" for="amount">Amount (UGX)</label><input class="form-control" id="amount" name="amount" type="number" min="0.01" max="9999999999.99" step="0.01" value="{{ values.get('amount', '') }}" required></div>
+  {% for field, label, limit in [('voucher_number', 'Voucher number', 64), ('receipt_number', 'Receipt number', 64), ('purpose', 'Purpose / description', 255), ('payee', 'Payee / recipient', 150), ('approved_by', 'Approved by', 150)] %}
+    <div class="col-md-6"><label class="form-label" for="{{ field }}">{{ label }}</label><input class="form-control" id="{{ field }}" name="{{ field }}" value="{{ values.get(field) or '' }}" maxlength="{{ limit }}" {% if field == 'purpose' %}required{% endif %}></div>
+  {% endfor %}
+  <div class="col-md-6">
+    <label class="form-label" for="expense_category">Expense category</label>
+    <select class="form-select" name="expense_category" id="expense_category">
+      <option value="">Uncategorized</option>
+      {% for category in categories %}<option value="{{ category }}" {% if values.get('expense_category') == category %}selected{% endif %}>{{ category|title }}</option>{% endfor %}
+    </select>
+  </div>
+  {% for field, label in [('is_advance', 'Unaccounted advance'), ('is_accounted', 'Advance accounted for')] %}
+    <div class="col-md-6"><div class="form-check"><input class="form-check-input" id="{{ field }}" type="checkbox" name="{{ field }}" {% if values.get(field) %}checked{% endif %}><label class="form-check-label" for="{{ field }}">{{ label }}</label></div></div>
+  {% endfor %}
+  <div class="col-12"><label class="form-label" for="attachment">Replace attachment</label><input class="form-control" id="attachment" name="attachment" type="file" accept=".pdf,.png,.jpg,.jpeg,.gif,.doc,.docx,.xls,.xlsx"><div class="form-text">Leave empty to keep the current attachment.</div>{% if txn.attachment_path %}<a href="{{ url_for('finance.petty_cash_attachment', transaction_id=txn.id) }}" target="_blank" rel="noopener">View current attachment</a>{% endif %}</div>
+  <div class="col-12"><label class="form-label" for="notes">Notes / comments</label><textarea class="form-control" id="notes" name="notes" rows="3">{{ values.get('notes') or '' }}</textarea></div>
+  <div class="col-12 d-flex gap-2"><button class="btn btn-primary" type="submit">Save changes</button><a class="btn btn-outline-secondary" href="{{ ledger_url }}">Cancel</a></div>
+</form>
+{% endblock %}
+{% block scripts %}
+{{ super() }}
+<script>
+  const actionMode = document.getElementById('action_mode');
+  function syncAction() {
+    const cashInAction = actionMode.value !== 'transaction';
+    ['voucher_number', 'receipt_number', 'expense_category'].forEach(id => {
+      document.getElementById(id).disabled = cashInAction;
+    });
+    const transactionType = document.getElementById('transaction_type');
+    if (cashInAction) transactionType.value = 'cash_in';
+    transactionType.disabled = cashInAction;
+  }
+  // Keep a submitted type even when the visible control is disabled.
+  document.querySelector('form').addEventListener('submit', () => {
+    document.getElementById('transaction_type').disabled = false;
+  });
+  actionMode.addEventListener('change', syncAction);
+  syncAction();
+</script>
+{% endblock %}

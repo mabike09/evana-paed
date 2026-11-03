@@ -4,7 +4,7 @@
 <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
   <div>
     <h2 class="mb-0">Finance · Petty Cash Ledger</h2>
-    <div class="text-muted">Track petty cash float, top-ups, returns, expenditures, approvals, and audit history.</div>
+    <div class="text-muted">Track petty cash float, top-ups, returns, expenditures, and approvals.</div>
   </div>
   <div class="d-flex gap-2">
     {% if can_manage_petty_cash %}
@@ -87,23 +87,6 @@
         </ul>
       </div>
     </div>
-
-    <div class="card">
-      <div class="card-header"><strong>Audit trail</strong></div>
-      <div class="card-body">
-        <ul class="list-group list-group-flush">
-          {% for audit in audits %}
-            <li class="list-group-item px-0">
-              <div class="fw-semibold">{{ audit.action|capitalize }} {{ audit.record_type }} #{{ audit.record_id or '—' }}</div>
-              <div class="small text-muted">{{ audit.actor_username }} ({{ audit.actor_role }}) · {{ audit.created_at }}</div>
-              <div class="small"><code>{{ audit.changes_json }}</code></div>
-            </li>
-          {% else %}
-            <li class="list-group-item px-0 text-muted">No audit entries recorded yet.</li>
-          {% endfor %}
-        </ul>
-      </div>
-    </div>
   </div>
 
   <div class="col-lg-8">
@@ -168,13 +151,28 @@
         <table class="table table-sm table-striped align-middle">
           <thead>
             <tr>
-              <th>Date</th><th>Voucher</th><th>Receipt</th><th>Type</th><th>Purpose</th><th>Category</th><th>Payee</th><th>Entered/Approved</th><th>Attachment</th><th>Notes</th><th>Prev.</th><th>In</th><th>Out</th><th>New</th>
+              {% if can_manage_petty_cash %}<th class="d-print-none">Actions</th>{% endif %}<th>Date</th><th>Voucher</th><th>Receipt</th><th>Type</th><th>Purpose</th><th>Category</th><th>Payee</th><th>Entered/Approved</th><th>Attachment</th><th>Notes</th><th>Prev.</th><th>In</th><th>Out</th><th>New</th>
             </tr>
           </thead>
           <tbody>
             {% for row in ledger_rows %}
               {% set txn = row.transaction %}
               <tr>
+                {% if can_manage_petty_cash %}
+                  <td class="d-print-none text-nowrap">
+                    {% if txn.reconciliation_id or txn.reconciled_at %}
+                      <span class="small text-muted">Reconciled</span>
+                    {% elif locked_until and txn.date <= locked_until|string %}
+                      <span class="small text-muted">Closed period</span>
+                    {% else %}
+                      <a class="btn btn-sm btn-outline-primary" href="{{ url_for('finance.petty_cash_edit', transaction_id=txn.id, **ledger_filters) }}" aria-label="Edit petty cash entry {{ txn.id }}">Edit</a>
+                      <form method="post" action="{{ url_for('finance.petty_cash_delete', transaction_id=txn.id, **ledger_filters) }}" class="d-inline" onsubmit="return confirm('Delete petty cash entry #{{ txn.id }}? This cannot be undone.');">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <button class="btn btn-sm btn-outline-danger" type="submit" aria-label="Delete petty cash entry {{ txn.id }}">Delete</button>
+                      </form>
+                    {% endif %}
+                  </td>
+                {% endif %}
                 <td>{{ txn.date }}</td>
                 <td>{{ txn.voucher_number or '—' }}</td>
                 <td>{{ txn.receipt_number or '—' }}</td>
@@ -191,7 +189,7 @@
                 <td class="fw-semibold">UGX {{ '{:,.2f}'.format(row.new_balance) }}</td>
               </tr>
             {% else %}
-              <tr><td colspan="14" class="text-muted text-center">No petty cash transactions found for the selected filters.</td></tr>
+              <tr><td colspan="{{ 15 if can_manage_petty_cash else 14 }}" class="text-muted text-center">No petty cash transactions found for the selected filters.</td></tr>
             {% endfor %}
           </tbody>
         </table>
