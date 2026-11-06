@@ -54,6 +54,7 @@
             <thead>
               <tr>
                 <th>Date</th><th>Category</th><th>Description</th><th>Vendor/Payee</th><th>Reference</th><th class="text-end">Amount</th><th>Entered by</th>
+                {% if is_admin %}<th class="d-print-none">Actions</th>{% endif %}
               </tr>
             </thead>
             <tbody>
@@ -66,9 +67,18 @@
                 <td>{{ e.reference or '-' }}</td>
                 <td class="text-end">UGX {{ '{:,.2f}'.format(e.amount) }}</td>
                 <td>{{ e.entered_by }}</td>
+                {% if is_admin %}
+                <td class="text-nowrap d-print-none">
+                  <a class="btn btn-sm btn-outline-primary" href="{{ url_for('finance.expense_edit', expense_id=e.id, **expense_filters) }}" aria-label="Edit expense {{ e.id }}">Edit</a>
+                  <form method="post" action="{{ url_for('finance.expense_delete', expense_id=e.id, **expense_filters) }}" class="d-inline" onsubmit="return confirm('Delete expense #{{ e.id }}? This cannot be undone.');">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button class="btn btn-sm btn-outline-danger" type="submit" aria-label="Delete expense {{ e.id }}">Delete</button>
+                  </form>
+                </td>
+                {% endif %}
               </tr>
               {% else %}
-              <tr><td colspan="7" class="text-center text-muted">No expenses recorded yet.</td></tr>
+              <tr><td colspan="{{ 8 if is_admin else 7 }}" class="text-center text-muted">No expenses recorded yet.</td></tr>
               {% endfor %}
             </tbody>
           </table>

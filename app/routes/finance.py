@@ -729,7 +729,82 @@ def expense_tracker():
         expenses=expenses,
         start_date=start_date,
         end_date=end_date,
+        expense_filters=_expense_tracker_filters(),
+        is_admin=_user_role() == "admin",
     )
+
+
+def _expense_tracker_filters():
+    return {key: (request.args.get(key) or "").strip()
+            for key in ("start_date", "end_date")}
+
+
+@bp.route("/finance/expense-tracker/<int:expense_id>/edit", methods=["GET", "POST"])
+@login_required
+@roles_required("admin")
+def expense_edit(expense_id: int):
+    expense = db.get_or_404(ExpenseEntry, expense_id)
+    tracker_url = url_for("finance.expense_tracker", **_expense_tracker_filters())
+    if request.method == "POST":
+        expense_date = _parse_date(request.form.get("expense_date"))
+        category_id = request.form.get("category_id", type=int)
+        category = db.session.get(ExpenseCategory, category_id) if category_id else None
+        description = (request.form.get("description") or "").strip()
+        vendor_payee = (request.form.get("vendor_payee") or "").strip()
+        reference = (request.form.get("reference") or "").strip()
+        try:
+            raw_amount = Decimal(request.form.get("amount") or "")
+            valid_amount = raw_amount.is_finite() and 0 <= raw_amount <= Decimal("9999999999.99")
+            amount = _money(raw_amount) if valid_amount else None
+        except (InvalidOperation, ValueError):
+            valid_amount = False
+
+        error = None
+        if not expense_date:
+            error = "Enter a valid expense date."
+        elif not category or (not category.is_active and category.id != expense.category_id):
+            error = "Select a valid expense category."
+        elif not description or len(description) > 255:
+            error = "Description is required and must be at most 255 characters."
+        elif not vendor_payee or len(vendor_payee) > 180:
+            error = "Vendor/Payee is required and must be at most 180 characters."
+        elif len(reference) > 100:
+            error = "Reference must be at most 100 characters."
+        elif not valid_amount:
+            error = "Enter a valid amount from UGX 0 to 9,999,999,999.99."
+        if error:
+            flash(error, "warning")
+        else:
+            expense.expense_date = str(expense_date)
+            expense.category_id = category.id
+            expense.description = description
+            expense.vendor_payee = vendor_payee
+            expense.reference = reference or None
+            expense.amount = amount
+            db.session.commit()
+            flash("Expense updated.", "success")
+            return redirect(tracker_url)
+
+    categories = ExpenseCategory.query.filter(
+        (ExpenseCategory.is_active.is_(True)) | (ExpenseCategory.id == expense.category_id)
+    ).order_by(ExpenseCategory.name.asc()).all()
+    values = request.form if request.method == "POST" else {
+        field: getattr(expense, field)
+        for field in ("expense_date", "category_id", "description", "vendor_payee", "reference", "amount")
+    }
+    return render_template("finance_expense_edit.html", expense=expense, values=values,
+                           categories=categories, tracker_url=tracker_url)
+
+
+@bp.route("/finance/expense-tracker/<int:expense_id>/delete", methods=["POST"])
+@login_required
+@roles_required("admin")
+def expense_delete(expense_id: int):
+    expense = db.get_or_404(ExpenseEntry, expense_id)
+    db.session.delete(expense)
+    db.session.commit()
+    flash("Expense deleted.", "success")
+    return redirect(url_for("finance.expense_tracker", **_expense_tracker_filters()))
 
 
 @bp.route("/finance/accounts-payable", methods=["GET", "POST"])
