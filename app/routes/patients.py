@@ -2,7 +2,7 @@
 from decimal import Decimal
 from datetime import datetime
 
-from flask import Blueprint, render_template, request, redirect, url_for, flash, current_app, jsonify
+from flask import Blueprint, render_template, request, redirect, url_for, flash, current_app, jsonify, abort
 from flask_login import login_required, current_user
 from sqlalchemy import or_, cast, func
 from sqlalchemy.types import String
@@ -59,6 +59,11 @@ Procedure = _ProcModel
 bp = Blueprint("patients", __name__)
 
 PATIENTS_PER_PAGE = 200
+
+
+def _require_open_visit(visit):
+    if visit.is_closed:
+        abort(403, description="This visit is closed and read-only. Notes, drugs, procedures, and tests cannot be changed.")
 
 # --- Model aliases used by patient_chart() ---
 try:
@@ -798,8 +803,7 @@ def _get_or_create_open_visit(patient_id: int) -> Visit:
     same_day_open_visit = bool(
         v
         and str(getattr(v, "visit_date", "") or "").strip() == today_str
-        and (getattr(v, "status", "") or "").lower() != "closed"
-        and getattr(v, "closed_at", None) is None
+        and not v.is_closed
     )
 
     # Reuse only an actively open visit from today; otherwise create a NEW visit.
@@ -1202,6 +1206,7 @@ def patients_send_to_lab(patient_id):
 @roles_required("doctor", "pediatrician", "admin")
 def visit_send_to_lab(visit_id):
     v = Visit.query.get_or_404(visit_id)
+    _require_open_visit(v)
     p = Patient.query.get_or_404(v.patient_id)
 
     raw_ids = request.form.getlist("lab_tests")
@@ -1635,7 +1640,7 @@ def patient_chart(patient_id):
     else:
         visit = visits[0] if visits else None
 
-    if visit and current_user.role in {"doctor", "pediatrician"} and not visit.seen_by_id:
+    if visit and not visit.is_closed and current_user.role in {"doctor", "pediatrician"} and not visit.seen_by_id:
         visit.seen_by_id = current_user.id
         db.session.commit()
 
@@ -1692,6 +1697,7 @@ def patient_chart(patient_id):
 @roles_required("doctor", "pediatrician", "admin")
 def visit_close_and_bill(visit_id):
     v = Visit.query.get_or_404(visit_id)
+    _require_open_visit(v)
     if current_user.role in {"doctor", "pediatrician"} and not v.seen_by_id:
         v.seen_by_id = current_user.id
 
@@ -1850,6 +1856,7 @@ def visit_update_clinical(visit_id):
     """
     v = Visit.query.get_or_404(visit_id)
 
+    _require_open_visit(v)
     presenting = (request.form.get("presenting") or "").strip()
     hopc       = (request.form.get("hopc") or "").strip()
     exam       = (request.form.get("exam") or "").strip()
@@ -1902,6 +1909,7 @@ def visit_update_clinical(visit_id):
 @login_required
 def visit_add_procedure(visit_id):
     v = Visit.query.get_or_404(visit_id)
+    _require_open_visit(v)
 
     proc_id = request.form.get("proc_id", type=int)
     proc_name = (request.form.get("procedure_name") or "").strip()
@@ -2104,6 +2112,8 @@ def triage_start(q_id):
         if hasattr(e, "visit_id"):
             e.visit_id = v.id
 
+    _require_open_visit(v)
+
     # 3) Load patient
     p = Patient.query.get_or_404(e.patient_id)
 
@@ -2199,6 +2209,7 @@ def triage_finish(q_id):
 @roles_required("doctor", "pediatrician", "admin")
 def visit_add_drugs_bulk(visit_id):
     v = Visit.query.get_or_404(visit_id)
+    _require_open_visit(v)
     p = Patient.query.get_or_404(v.patient_id)
     inv = _get_or_create_invoice(p, v)
 

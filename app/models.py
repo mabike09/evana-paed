@@ -87,6 +87,11 @@ class Visit(db.Model):
     created_at = db.Column(db.DateTime, default=eat_now, nullable=False, index=True)
 
     @property
+    def is_closed(self):
+        """Honor either closure marker, including legacy visits with only one."""
+        return (self.status or "").strip().lower() == "closed" or self.closed_at is not None
+
+    @property
     def turnaround_minutes(self):
         end = self.closed_at or eat_now()
         start = self.created_at or end
