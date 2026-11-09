@@ -140,19 +140,7 @@
             </td>
             <td>
               {% if is_admin %}
-              <form method="post" action="{{ url_for('finance.ap_bill_edit', bill_id=bill.id) }}" class="mb-1">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                <input class="form-control form-control-sm mb-1" type="date" name="due_date" value="{{ bill.due_date }}">
-                <input class="form-control form-control-sm mb-1" name="description" value="{{ bill.description }}">
-                <input class="form-control form-control-sm mb-1" type="number" step="0.01" name="invoice_total" value="{{ bill.invoice_total }}">
-                <input class="form-control form-control-sm mb-1" type="number" step="0.01" name="tax_amount" value="{{ bill.tax_amount }}">
-                <select class="form-select form-select-sm mb-1" name="expense_category">{% for c in expense_categories %}<option value="{{ c }}" {% if bill.expense_category == c %}selected{% endif %}>{{ c|title }}</option>{% endfor %}</select>
-                <button class="btn btn-sm btn-outline-warning w-100" type="submit">Edit</button>
-              </form>
-              <form method="post" action="{{ url_for('finance.ap_bill_delete', bill_id=bill.id) }}">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                <button class="btn btn-sm btn-outline-danger w-100" type="submit" onclick="return confirm('Delete this invoice?')">Delete</button>
-              </form>
+              {% include '_finance_ap_bill_actions.html' %}
               {% else %}
                 <span class="text-muted small">Admin only</span>
               {% endif %}

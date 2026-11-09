@@ -1168,6 +1168,7 @@ def ap_supplier_detail(supplier_id: int):
         payments=payments,
         statement_entries=statement_entries,
         supplier_categories=AP_SUPPLIER_CATEGORIES,
+        expense_categories=_expense_category_names(),
         payment_terms=AP_PAYMENT_TERMS,
         ap_bill_balance=_ap_bill_balance,
         ap_bill_paid_total=_ap_bill_paid_total,
@@ -1196,7 +1197,9 @@ def ap_bill_edit(bill_id: int):
     _ap_log("edit", "bill", bill.id, {"before": before, "after": {"due_date": bill.due_date, "invoice_total": str(bill.invoice_total)}})
     db.session.commit()
     flash("Bill updated.", "success")
-    return redirect(url_for("finance.accounts_payable"))
+    return redirect(url_for("finance.ap_supplier_detail", supplier_id=bill.supplier_id)
+                    if request.form.get("return_to_supplier") == "1"
+                    else url_for("finance.accounts_payable"))
 
 
 @bp.route("/finance/accounts-payable/bills/<int:bill_id>/delete", methods=["POST"])
@@ -1208,7 +1211,9 @@ def ap_bill_delete(bill_id: int):
     db.session.delete(bill)
     db.session.commit()
     flash("Bill deleted.", "success")
-    return redirect(url_for("finance.accounts_payable"))
+    return redirect(url_for("finance.ap_supplier_detail", supplier_id=bill.supplier_id)
+                    if request.form.get("return_to_supplier") == "1"
+                    else url_for("finance.accounts_payable"))
 
 
 @bp.route("/finance/accounts-payable/attachment/<int:attachment_id>")
