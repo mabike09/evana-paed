@@ -34,8 +34,15 @@
 
     <div class="card mb-3"><div class="card-header"><strong>All invoices</strong></div><div class="card-body table-responsive">
       <table class="table table-sm align-middle">
-        <thead><tr><th>Invoice</th><th>Date</th><th>Due</th><th>Category</th><th>Total</th><th>Paid</th><th>Balance</th><th>Status</th></tr></thead>
-        <tbody>{% for bill in bills %}<tr><td>{{ bill.invoice_number }}</td><td>{{ bill.invoice_date }}</td><td>{{ bill.due_date }}</td><td>{{ bill.expense_category|title }}</td><td>UGX {{ '{:,.2f}'.format(bill.invoice_total) }}</td><td>UGX {{ '{:,.2f}'.format(ap_bill_paid_total(bill)) }}</td><td>UGX {{ '{:,.2f}'.format(ap_bill_balance(bill)) }}</td><td><span class="badge text-bg-{{ 'success' if bill.status == 'paid' else ('warning' if bill.status == 'partial' else 'danger') }}">{{ bill.status|title }}</span></td></tr>{% else %}<tr><td colspan="8" class="text-muted text-center">No invoices for this supplier.</td></tr>{% endfor %}</tbody>
+        <thead><tr><th>Invoice</th><th>Date</th><th>Due</th><th>Category</th><th>Total</th><th>Paid</th><th>Balance</th><th>Status</th>{% if is_admin %}<th>Actions</th>{% endif %}</tr></thead>
+        <tbody>{% for bill in bills %}<tr><td>{{ bill.invoice_number }}</td><td>{{ bill.invoice_date }}</td><td>{{ bill.due_date }}</td><td>{{ bill.expense_category|title }}</td><td>UGX {{ '{:,.2f}'.format(bill.invoice_total) }}</td><td>UGX {{ '{:,.2f}'.format(ap_bill_paid_total(bill)) }}</td><td>UGX {{ '{:,.2f}'.format(ap_bill_balance(bill)) }}</td><td><span class="badge text-bg-{{ 'success' if bill.status == 'paid' else ('warning' if bill.status == 'partial' else 'danger') }}">{{ bill.status|title }}</span></td>{% if is_admin %}<td>
+          <details><summary class="btn btn-sm btn-outline-primary">Edit invoice</summary>
+            <div class="mt-2" style="min-width: 200px">
+              {% set return_to_supplier = true %}
+              {% include '_finance_ap_bill_actions.html' %}
+            </div>
+          </details>
+        </td>{% endif %}</tr>{% else %}<tr><td colspan="{{ 9 if is_admin else 8 }}" class="text-muted text-center">No invoices for this supplier.</td></tr>{% endfor %}</tbody>
       </table>
     </div></div>
 
