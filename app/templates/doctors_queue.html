@@ -39,7 +39,7 @@
             <td>{{ e.status }}</td>
             <td class="text-end">
               <!-- Replace this with your doctor's workflow action -->
-              <a class="btn btn-sm btn-primary" href="{{ url_for('patients.patient_chart', patient_id=e.patient_id) }}">
+              <a class="btn btn-sm btn-primary" href="{{ url_for('patients.patient_chart', patient_id=e.patient_id, visit_id=e.visit_id) }}">
                 Open Chart
               </a>
             </td>

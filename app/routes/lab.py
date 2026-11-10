@@ -276,6 +276,7 @@ def lab_enter_results(order_id):
             age_years = None
 
     if request.method == "POST":
+        was_completed = order.status == "Completed"
         vals     = request.form.getlist("result_value[]")
         txts     = request.form.getlist("result_text[]")
         line_ids = request.form.getlist("line_id[]")
@@ -299,9 +300,6 @@ def lab_enter_results(order_id):
         except Exception:
             pass
 
-        db.session.commit()
-        flash("Lab results saved successfully.", "success")
-
         # -----------------------------------------------------------------
         # If completed, clear LAB queue entries.
         #
@@ -313,8 +311,10 @@ def lab_enter_results(order_id):
         # -----------------------------------------------------------------
         try:
             is_completed = (getattr(order, "status", None) == "Completed")
-            if is_completed and BillingQueue is not None:
-                q = BillingQueue.query.filter_by(status="Open")
+            # Editing previously completed results must not reopen a finished
+            # visit or consume a queue entry belonging to a later lab request.
+            if is_completed and not was_completed and BillingQueue is not None:
+                q = BillingQueue.query.filter_by(status="Open", patient_id=order.patient_id)
                 if hasattr(BillingQueue, "kind"):
                     q = q.filter(BillingQueue.kind == "LAB")
 
@@ -340,7 +340,9 @@ def lab_enter_results(order_id):
 
                 if Visit is not None and getattr(order, "visit_id", None):
                     v = Visit.query.get(order.visit_id)
-                    if v:
+                    # A pending historical order alone is not permission to
+                    # reopen a closed visit: require an active lab queue entry.
+                    if v and v.patient_id == order.patient_id and (lab_rows or not v.is_closed):
                         if should_return_to_doctor:
                             # Re-open/move to doctor queue.
                             existing_doctor = (
@@ -369,6 +371,8 @@ def lab_enter_results(order_id):
 
                             if hasattr(v, "status"):
                                 v.status = "Open"
+                            if hasattr(v, "closed_at"):
+                                v.closed_at = None
                             if hasattr(v, "current_station"):
                                 v.current_station = "DOCTOR"
                         else:
@@ -380,9 +384,15 @@ def lab_enter_results(order_id):
                             if hasattr(v, "current_station"):
                                 v.current_station = "CLOSED"
 
-                db.session.commit()
+            # Persist results, queue routing and all visit state together so a
+            # failed return can be retried without a half-completed lab order.
+            db.session.commit()
         except Exception:
-            current_app.logger.exception("Failed to close lab queue/visit after lab completion")
+            db.session.rollback()
+            current_app.logger.exception("Failed to save lab results and route visit")
+            flash("Could not save lab results. Please try again.", "danger")
+        else:
+            flash("Lab results saved successfully.", "success")
 
         # ✅ Stay on the same page instead of redirecting
         lines = LabOrderLine.query.filter_by(order_id=order.id).all()
