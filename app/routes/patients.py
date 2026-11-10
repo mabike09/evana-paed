@@ -1212,7 +1212,7 @@ def visit_send_to_lab(visit_id):
     raw_ids = request.form.getlist("lab_tests")
     if not raw_ids:
         flash("Select at least one lab test.", "warning")
-        return redirect(url_for("patients.patient_chart", patient_id=p.id, tab="lab"))
+        return redirect(url_for("patients.patient_chart", patient_id=p.id, visit_id=v.id, tab="lab"))
 
     inv = _get_or_create_invoice(p, v)
     
@@ -1239,7 +1239,7 @@ def visit_send_to_lab(visit_id):
 
     if not chosen:
         flash("Selected lab tests not found in price book.", "danger")
-        return redirect(url_for("patients.patient_chart", patient_id=p.id, tab="lab"))
+        return redirect(url_for("patients.patient_chart", patient_id=p.id, visit_id=v.id, tab="lab"))
 
     # If no InvoiceLine model, just log notes
     if not InvoiceLine:
@@ -1248,7 +1248,7 @@ def visit_send_to_lab(visit_id):
             _append_tagged_notes(v, "Lab Request", name)
         db.session.commit()
         flash("Lab tests noted in visit.", "success")
-        return redirect(url_for("lab.lab_queue", from_chart=1, patient_id=p.id, visit_id=v.id))
+        return redirect(url_for("patients.patient_chart", patient_id=p.id, visit_id=v.id, tab="lab"))
 
     # 1) Create invoice lines
     new_lines = []
@@ -1361,7 +1361,7 @@ def visit_send_to_lab(visit_id):
         db.session.rollback()
         current_app.logger.exception("Failed to create lab order/lines")
         flash("Could not create lab order. Please try again.", "danger")
-        return redirect(url_for("patients.patient_chart", patient_id=p.id, tab="lab"))
+        return redirect(url_for("patients.patient_chart", patient_id=p.id, visit_id=v.id, tab="lab"))
 
 
     lab_note = f"Lab tests: {', '.join([(getattr(r,'item_name', None) or getattr(r,'item_code','Lab Test')) for r in chosen])}"
@@ -1380,13 +1380,13 @@ def visit_send_to_lab(visit_id):
     db.session.commit()
     if _is_insurance_patient(p):
         flash(f"Added {len(chosen)} lab test(s). Insurance patient sent directly to Lab queue.", "success")
-        return redirect(url_for("lab.lab_queue", from_chart=1, patient_id=p.id, visit_id=v.id))
+        return redirect(url_for("patients.patient_chart", patient_id=p.id, visit_id=v.id, tab="lab"))
 
     flash(
         f"Added {len(chosen)} lab test(s) to invoice. Patient must pay before the request reaches the lab queue.",
         "success",
     )
-    return redirect(url_for("patients.patient_chart", patient_id=p.id, tab="billing"))
+    return redirect(url_for("patients.patient_chart", patient_id=p.id, visit_id=v.id, tab="billing"))
 
 
 # --------- EVERYTHING ELSE BELOW THIS POINT: leave as-is in your project ---------
@@ -2257,7 +2257,7 @@ def visit_add_drugs_bulk(visit_id):
 
     if not added_any:
         flash("No valid drug rows provided.", "warning")
-        return redirect(url_for("patients.patient_chart", patient_id=p.id, tab="visits"))
+        return redirect(url_for("patients.patient_chart", patient_id=p.id, visit_id=v.id, tab="visits"))
 
     # Recompute invoice from lines if present
     try:
@@ -2272,5 +2272,5 @@ def visit_add_drugs_bulk(visit_id):
 
     db.session.commit()
     flash("Drugs added to visit.", "success")
-    return redirect(url_for("patients.patient_chart", patient_id=p.id, tab="visits"))
+    return redirect(url_for("patients.patient_chart", patient_id=p.id, visit_id=v.id, tab="visits"))
     
