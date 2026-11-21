@@ -61,19 +61,26 @@
               {% for e in expenses %}
               <tr>
                 <td>{{ e.expense_date }}</td>
-                <td>{{ e.category.name }}</td>
-                <td>{{ e.description }}</td>
+                <td>{{ e.category_name }}</td>
+                <td>
+                  {{ e.description }}
+                  {% if e.ap_supplier_id is not none %}
+                  <a class="d-block" href="{{ url_for('finance.ap_supplier_detail', supplier_id=e.ap_supplier_id) }}">Accounts Payable</a>
+                  {% endif %}
+                </td>
                 <td>{{ e.vendor_payee }}</td>
                 <td>{{ e.reference or '-' }}</td>
                 <td class="text-end">UGX {{ '{:,.2f}'.format(e.amount) }}</td>
                 <td>{{ e.entered_by }}</td>
                 {% if is_admin %}
                 <td class="text-nowrap d-print-none">
+                  {% if e.ap_supplier_id is none %}
                   <a class="btn btn-sm btn-outline-primary" href="{{ url_for('finance.expense_edit', expense_id=e.id, **expense_filters) }}" aria-label="Edit expense {{ e.id }}">Edit</a>
                   <form method="post" action="{{ url_for('finance.expense_delete', expense_id=e.id, **expense_filters) }}" class="d-inline" onsubmit="return confirm('Delete expense #{{ e.id }}? This cannot be undone.');">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <button class="btn btn-sm btn-outline-danger" type="submit" aria-label="Delete expense {{ e.id }}">Delete</button>
                   </form>
+                  {% endif %}
                 </td>
                 {% endif %}
               </tr>

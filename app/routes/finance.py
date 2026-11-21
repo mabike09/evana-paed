@@ -17,7 +17,7 @@ from reportlab.lib.pagesizes import A4, landscape
 from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy import func, inspect, text
+from sqlalchemy import func, inspect, literal, select, text
 from werkzeug.utils import secure_filename
 
 from ..extensions import db
@@ -713,15 +713,42 @@ def expense_tracker():
 
     start_date = (request.args.get("start_date") or "").strip()
     end_date = (request.args.get("end_date") or "").strip()
-    query = ExpenseEntry.query.join(ExpenseCategory).order_by(ExpenseEntry.expense_date.desc(), ExpenseEntry.id.desc())
+    # Read payments from their source so existing and new payments appear once
+    # without posting a second expense to the income statement.
+    manual_expenses = select(
+        ExpenseEntry.id.label("id"),
+        ExpenseEntry.expense_date.label("expense_date"),
+        ExpenseCategory.name.label("category_name"),
+        ExpenseEntry.description,
+        ExpenseEntry.vendor_payee,
+        ExpenseEntry.reference,
+        ExpenseEntry.amount,
+        ExpenseEntry.entered_by,
+        literal(None).label("ap_supplier_id"),
+    ).join(ExpenseCategory)
+    ap_payments = select(
+        APPayment.id,
+        APPayment.payment_date,
+        func.coalesce(func.nullif(func.trim(APBill.expense_category), ""), "Uncategorized"),
+        func.coalesce(func.nullif(func.trim(APBill.description), ""), APBill.invoice_number),
+        APSupplier.supplier_name,
+        func.coalesce(func.nullif(APPayment.reference_number, ""), APBill.invoice_number),
+        APPayment.amount,
+        APPayment.processed_by,
+        APSupplier.id,
+    ).select_from(APPayment).join(APBill).join(APSupplier)
+    entries = manual_expenses.union_all(ap_payments).subquery()
+    query = select(entries).order_by(
+        entries.c.expense_date.desc(), entries.c.id.desc(), entries.c.ap_supplier_id.desc(),
+    )
     if start_date:
-        query = query.filter(ExpenseEntry.expense_date >= start_date)
+        query = query.where(entries.c.expense_date >= start_date)
     if end_date:
-        query = query.filter(ExpenseEntry.expense_date <= end_date)
+        query = query.where(entries.c.expense_date <= end_date)
 
     _sync_default_expense_categories()
     categories = ExpenseCategory.query.filter_by(is_active=True).order_by(ExpenseCategory.name.asc()).all()
-    expenses = query.all()
+    expenses = db.session.execute(query).all()
     return render_template(
         "finance_expense_tracker.html",
         today=today,
@@ -929,7 +956,6 @@ def accounts_payable():
             proof = request.files.get("payment_proof")
             proof_path = _ap_save_attachment(proof) if proof and proof.filename else None
             payment = APPayment(
-                bill_id=bill.id,
                 payment_date=str(_parse_date(request.form.get("payment_date"), today)),
                 amount=amount,
                 method=(request.form.get("method") or "cash").strip().lower(),
@@ -938,11 +964,11 @@ def accounts_payable():
                 processed_by=(request.form.get("processed_by") or getattr(current_user, "username", "")).strip(),
                 proof_attachment_path=proof_path,
             )
-            db.session.add(payment)
+            bill.payments.append(payment)
             _ap_refresh_status(bill)
             _ap_log("payment", "bill", bill.id, {"amount": str(amount), "method": payment.method})
             db.session.commit()
-            flash("Payment recorded.", "success")
+            flash("Payment recorded and visible in the Expense Tracker.", "success")
             return redirect(url_for("finance.accounts_payable"))
 
         if action == "create_recurring":

@@ -15,7 +15,7 @@ config_module.Config = type("Config", (), {})
 sys.modules.setdefault("config", config_module)
 
 from app.extensions import csrf, db
-from app.models import ExpenseCategory, ExpenseEntry, User
+from app.models import APBill, APPayment, APSupplier, ExpenseCategory, ExpenseEntry, User
 from app.routes import finance
 
 
@@ -87,6 +87,39 @@ class ExpenseManagementTests(unittest.TestCase):
                     description="Corrected expense", vendor_payee="Corrected vendor", reference="R-2", amount="250000.50")
         data.update(overrides)
         return self._post(self.path + "/edit" + query, **data)
+
+    def test_expense_tracker_includes_existing_and_new_ap_payments_by_payment_date(self):
+        supplier = APSupplier(supplier_name="AP supplier", category="utility providers",
+                              payment_terms="30 days")
+        bill = APBill(supplier=supplier, invoice_number="AP-INVOICE", invoice_date="2026-07-01",
+                      due_date="2026-07-31", expense_category="utilities", invoice_total=300000,
+                      description="July utility bill",
+                      submitted_by="admin", submitted_date="2026-07-01", created_by="admin")
+        bill.payments.append(APPayment(payment_date="2026-07-23", amount=100000,
+                                       method="cash", processed_by="admin"))
+        db.session.add(bill)
+        db.session.commit()
+
+        response = self._post("/finance/accounts-payable", action="record_payment", bill_id=bill.id,
+                              payment_date="2026-07-24", amount="200000", reference_number="AP-RECEIPT")
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(bill.status, "paid")
+
+        tracker = "/finance/expense-tracker"
+        html = self.client.get(tracker).get_data(as_text=True)
+        self.assertEqual(html.count("AP supplier"), 2)
+        self.assertEqual(html.count("AP-RECEIPT"), 1)
+        self.assertEqual(html.count("AP-INVOICE"), 1)
+        self.assertEqual(html.count("July utility bill"), 2)
+        self.assertEqual(html.count('aria-label="Edit expense'), 1)
+        self.assertIn("UGX 100,000.00", html)
+        self.assertIn("UGX 200,000.00", html)
+
+        html = self.client.get(tracker + "?start_date=2026-07-24&end_date=2026-07-24").get_data(as_text=True)
+        self.assertIn("Original expense", html)
+        self.assertIn("AP-RECEIPT", html)
+        self.assertNotIn("UGX 100,000.00", html)
+        self.assertEqual(ExpenseEntry.query.count(), 1)
 
     def test_admin_can_edit_all_fields_and_original_attribution_is_preserved(self):
         response = self._edit()
